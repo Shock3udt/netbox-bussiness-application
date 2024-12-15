@@ -65,11 +65,14 @@ def fix_relationship_tables(apps, schema_editor):
                 REFERENCES {referenced_table}(appcode);
             """)
 
+def no_op(*args, **kwargs):
+    pass
+
 class Migration(migrations.Migration):
     dependencies = [
         ('business_application', '0003_alter_businessapplication_options_and_more'),  # Update with the correct dependency
     ]
 
     operations = [
-        migrations.RunPython(fix_relationship_tables, lambda x: None),
+        migrations.RunPython(fix_relationship_tables, no_op),
     ]
