@@ -35,4 +35,4 @@ class BusinessApplication(NetBoxModel):
         return reverse('plugins:business_application:businessapplication_detail', args=[self.pk])
 
     def __str__(self):
-        return self.name
+        return self.appcode
