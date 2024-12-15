@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
                 ('last_updated', models.DateTimeField(auto_now=True, null=True)),
                 ('custom_field_data', models.JSONField(blank=True, default=dict, encoder=utilities.json.CustomFieldJSONEncoder)),
                 ('appcode', models.CharField(max_length=20, unique=True)),
-                ('name', models.CharField(max_length=100)),
+                ('name', models.CharField(max_length=240)),
                 ('description', models.TextField(blank=True)),
                 ('owner', models.CharField(max_length=100)),
                 ('delegate', models.CharField(blank=True, max_length=100, null=True)),

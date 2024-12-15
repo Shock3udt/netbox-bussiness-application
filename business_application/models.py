@@ -9,7 +9,7 @@ class BusinessApplication(NetBoxModel):
     A model representing a business application in the organization.
     """
     appcode = models.CharField(max_length=20, unique=True)
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=240)
     description = models.TextField(blank=True)
     owner = models.CharField(max_length=100)
     delegate = models.CharField(max_length=100, blank=True, null=True)
