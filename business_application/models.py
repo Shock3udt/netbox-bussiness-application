@@ -26,7 +26,7 @@ class BusinessApplication(NetBoxModel):
     )
 
     class Meta:
-        ordering = ['name']
+        ordering = ['appcode']
 
     def get_absolute_url(self):
         """
