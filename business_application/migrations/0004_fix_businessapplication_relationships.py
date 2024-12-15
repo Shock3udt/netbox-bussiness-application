@@ -26,7 +26,6 @@ def fix_relationship_tables(apps, schema_editor):
             new_column = table["new_column"]
             referenced_table = table["referenced_table"]
 
-            print(f"Processing table: {table_name}")
 
             # Step 1: Drop the old foreign key constraint
             cursor.execute(f"""
@@ -44,7 +43,6 @@ def fix_relationship_tables(apps, schema_editor):
                     END IF;
                 END $$;
             """)
-            print(f"Dropped foreign key constraints on {table_name}.{old_column}")
 
             # Step 2: Alter the column type to match `businessapplication_appcode`
             cursor.execute(f"""
@@ -52,14 +50,12 @@ def fix_relationship_tables(apps, schema_editor):
                 ALTER COLUMN {old_column} TYPE character varying
                 USING {old_column}::character varying;
             """)
-            print(f"Altered column {old_column} to type character varying in {table_name}")
 
             # Step 3: Rename the column to `businessapplication_appcode`
             cursor.execute(f"""
                 ALTER TABLE {table_name}
                 RENAME COLUMN {old_column} TO {new_column};
             """)
-            print(f"Renamed column {old_column} to {new_column} in {table_name}")
 
             # Step 4: Add a new foreign key constraint
             cursor.execute(f"""
@@ -68,7 +64,6 @@ def fix_relationship_tables(apps, schema_editor):
                 FOREIGN KEY ({new_column})
                 REFERENCES {referenced_table}(appcode);
             """)
-            print(f"Added foreign key constraint on {table_name}.{new_column} to {referenced_table}(appcode)")
 
 class Migration(migrations.Migration):
     dependencies = [
@@ -76,5 +71,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(fix_relationship_tables),
+        migrations.RunPython(fix_relationship_tables, lambda x: None),
     ]
