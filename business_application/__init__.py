@@ -3,7 +3,7 @@ class BusinessApplicationConfig(PluginConfig):
     name = "business_application"  # Must match the plugin directory name
     verbose_name = "Business Application"
     description = "Manage business applications and their relationships to virtual machines"
-    version = "1.0.3"
+    version = "2.0.0"
     base_url = "business-application"  # URL base for the plugin
     required_settings = []  # Define required settings if applicable
     min_version = "4.1.0"  # Minimum required NetBox version
