@@ -18,4 +18,4 @@ class BusinessApplicationFilter(NetBoxModelFilterSet):
 
     class Meta:
         model = BusinessApplication
-        fields = ['name', 'appcode', 'owner', 'delegate']
+        fields = ['appcode', 'name', 'owner', 'delegate']

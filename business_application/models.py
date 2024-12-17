@@ -8,8 +8,8 @@ class BusinessApplication(NetBoxModel):
     """
     A model representing a business application in the organization.
     """
-    name = models.CharField(max_length=100, unique=True)
     appcode = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=240)
     description = models.TextField(blank=True)
     owner = models.CharField(max_length=100)
     delegate = models.CharField(max_length=100, blank=True, null=True)
@@ -26,7 +26,7 @@ class BusinessApplication(NetBoxModel):
     )
 
     class Meta:
-        ordering = ['name']
+        ordering = ['appcode']
 
     def get_absolute_url(self):
         """
@@ -35,4 +35,4 @@ class BusinessApplication(NetBoxModel):
         return reverse('plugins:business_application:businessapplication_detail', args=[self.pk])
 
     def __str__(self):
-        return self.name
+        return self.appcode

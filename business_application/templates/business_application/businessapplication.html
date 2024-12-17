@@ -11,21 +11,38 @@
 
 {% block content %}
 <div class="row mb-3">
+    <!-- Full Width Column for Name and Description -->
+    <div class="col-md-12">
+        <div class="card">
+            <h5 class="card-header">
+                Business Application Details
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <td>Name</td>
+                        <td>{{ object.name }}</td>
+                    </tr>
+                    <tr>
+                        <td>Description</td>
+                        <td>{{ object.description|placeholder }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- Left Column: Main Details -->
     <div class="col-md-4">
         <div class="card">
             <h5 class="card-header">
-                Business Application
+                Additional Details
             </h5>
             <div class="card-body">
                 <table class="table table-hover attr-table">
                     <tr>
                         <td>App Code</td>
                         <td>{{ object.appcode }}</td>
-                    </tr>
-                    <tr>
-                        <td>Description</td>
-                        <td>{{ object.description|placeholder }}</td>
                     </tr>
                     <tr>
                         <td>Owner</td>
@@ -39,7 +56,7 @@
                         <td>ServiceNow</td>
                         <td>
                             {% if object.servicenow %}
-                                <a href="{{ object.servicenow }}" target="_blank">{{ object.servicenow }}</a>
+                                <a href="{{ object.servicenow }}" target="_blank">link</a>
                             {% else %}
                                 <em>N/A</em>
                             {% endif %}
@@ -90,7 +107,7 @@
                 Associated Devices
             </h5>
             <div class="card-body">
-                {% if object.virtual_machines.count > 0 %}
+                {% if object.devices.count > 0 %}
                     <table class="table table-hover">
                         <thead>
                             <tr>
@@ -118,4 +135,3 @@
     </div>
 </div>
 {% endblock %}
-
