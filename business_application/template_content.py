@@ -54,6 +54,7 @@ class DeviceAppCodeExtension(AppCodeExtension):
                     if termination.device not in nodes:
                         nodes.append(termination.device)
             current += 1
+        return BusinessApplicationTable(apps)
 
 class VMAppCodeExtension(AppCodeExtension):
     model = 'virtualization.virtualmachine'
