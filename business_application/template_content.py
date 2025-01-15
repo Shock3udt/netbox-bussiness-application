@@ -48,8 +48,9 @@ class DeviceAppCodeExtension(AppCodeExtension):
         nodes = [obj]
         current = 0
         while current < len(nodes):
-            apps = apps.union(BusinessApplication.objects.filter(devices=obj))
-            for cable_termination in obj.cabletermination_set.all():
+            node = nodes[current]
+            apps = apps.union(BusinessApplication.objects.filter(devices=node))
+            for cable_termination in node.cabletermination_set.all():
                 for termination in cable_termination.cable.b_terminations:
                     if termination.device not in nodes:
                         nodes.append(termination.device)
