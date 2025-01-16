@@ -52,10 +52,10 @@ class DeviceAppCodeExtension(AppCodeExtension):
             apps = apps.union(BusinessApplication.objects.filter(devices=node))
             for cable_termination in node.cabletermination_set.all():
                 for termination in cable_termination.cable.b_terminations:
-                    if termination and termination.device not in nodes:
+                    if termination and termination.device and termination.device not in nodes:
                         nodes.append(termination.device)
                 for termination in cable_termination.cable.a_terminations:
-                    if termination and termination.device not in nodes:
+                    if termination and termination.device and termination.device.role == termination.device.role and termination.device not in nodes:
                         nodes.append(termination.device)
             current += 1
         return BusinessApplicationTable(apps)
