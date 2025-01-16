@@ -1,4 +1,5 @@
 from netbox.plugins import PluginTemplateExtension
+from django.db.models import Q
 
 from .models import BusinessApplication
 from .tables import BusinessApplicationTable
@@ -49,7 +50,8 @@ class DeviceAppCodeExtension(AppCodeExtension):
         current = 0
         while current < len(nodes):
             node = nodes[current]
-            apps = apps.union(BusinessApplication.objects.filter(devices=node))
+            apps = apps.union(BusinessApplication.objects.filter(Q(devices=node) | Q(virtual_machines__device=node)))
+
             for cable_termination in node.cabletermination_set.all():
                 for termination in cable_termination.cable.b_terminations:
                     if termination and termination.device and termination.device not in nodes:
