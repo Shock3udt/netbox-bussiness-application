@@ -54,6 +54,9 @@ class DeviceAppCodeExtension(AppCodeExtension):
                 for termination in cable_termination.cable.b_terminations:
                     if termination.device not in nodes:
                         nodes.append(termination.device)
+                for termination in cable_termination.cable.a_terminations:
+                    if termination.device not in nodes:
+                        nodes.append(termination.device)
             current += 1
         return BusinessApplicationTable(apps)
 
