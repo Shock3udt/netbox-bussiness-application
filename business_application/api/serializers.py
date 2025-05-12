@@ -29,3 +29,33 @@ class BusinessApplicationSerializer(serializers.ModelSerializer):
             'virtual_machines': {'read_only': True},
             'devices': {'read_only': True},
         }
+
+class BusinessApplicationSlimSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessApplication
+         fields = [
+            'id',
+            'name',
+            'appcode',
+            'owner',
+            'delegate',
+            'servicenow',
+        ]
+
+class DeviceWithApplicationsSerializer(serializers.ModelSerializer):
+    business_applications = BusinessApplicationSlimSerializer(
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model = Device
+        fields = [
+            'id',
+            'name',
+            'region',
+            'site',
+            'device_type',
+            'serial_number',
+            'business_applications',
+        ]
