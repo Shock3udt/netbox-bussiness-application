@@ -7,7 +7,7 @@ class BusinessApplicationViewSet(ModelViewSet):
     """
     API endpoint for managing BusinessApplication objects.
     """
-    queryset = BusinessApplication.objects.prefetch_related('virtual_machines').all()
+    queryset = BusinessApplication.objects.prefetch_related('virtual_machines', 'devices').all()
     serializer_class = BusinessApplicationSerializer
     permission_classes = [IsAuthenticated]
 
