@@ -33,7 +33,7 @@ class BusinessApplicationSerializer(serializers.ModelSerializer):
 class BusinessApplicationSlimSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessApplication
-         fields = [
+        fields = [
             'id',
             'name',
             'appcode',
