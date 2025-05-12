@@ -53,9 +53,8 @@ class DeviceWithApplicationsSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'name',
-            'region',
             'site',
             'device_type',
-            'serial_number',
+            'serial',
             'business_applications',
         ]
