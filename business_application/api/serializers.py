@@ -1,11 +1,17 @@
 from rest_framework import serializers
 from business_application.models import BusinessApplication
+from dcim.models import Device
 
 class BusinessApplicationSerializer(serializers.ModelSerializer):
     """
     Serializer for the BusinessApplication model.
     Provides representation for API interactions.
     """
+    devices = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Device.objects.all()
+    )
+    
     class Meta:
         model = BusinessApplication
         fields = [
