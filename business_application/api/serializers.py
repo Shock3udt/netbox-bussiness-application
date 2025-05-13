@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from business_application.models import BusinessApplication
-from dcim.models import Device
 
 class BusinessApplicationSerializer(serializers.ModelSerializer):
     """
@@ -23,38 +22,7 @@ class BusinessApplicationSerializer(serializers.ModelSerializer):
             'delegate',
             'servicenow',
             'virtual_machines',  # Assumes virtual_machines is a ManyToMany field
-            'devices',
         ]
         extra_kwargs = {
             'virtual_machines': {'read_only': True},
-            'devices': {'read_only': True},
         }
-
-class BusinessApplicationSlimSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = BusinessApplication
-        fields = [
-            'id',
-            'name',
-            'appcode',
-            'owner',
-            'delegate',
-            'servicenow',
-        ]
-
-class DeviceWithApplicationsSerializer(serializers.ModelSerializer):
-    business_applications = BusinessApplicationSlimSerializer(
-        many=True,
-        read_only=True
-    )
-
-    class Meta:
-        model = Device
-        fields = [
-            'id',
-            'name',
-            'site',
-            'device_type',
-            'serial',
-            'business_applications',
-        ]
