@@ -43,22 +43,21 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
 
         while current < len(nodes):
             node = nodes[current]
-            apps.update(
-                BusinessApplication.objects.filter(
-                    Q(devices=node) | Q(virtual_machines__device=node)
-                )
+
+            node_apps = BusinessApplication.objects.filter(
+                Q(devices=node) | Q(virtual_machines__device=node)
             )
+            apps.update(node_apps)
+
             for cable_termination in node.cabletermination_set.all():
                 cable = cable_termination.cable
+
                 for termination in cable.a_terminations + cable.b_terminations:
-                    next_device = getattr(termination, 'device', None)
-                    if (
-                        next_device
-                        and next_device != node
-                        and next_device.role == node.role
-                        and next_device not in nodes
-                    ):
-                        nodes.append(next_device)
+                    if termination and hasattr(termination, 'device'):
+                        next_device = termination.device
+                        if next_device and next_device not in nodes:
+                            # Optional: add role check if needed
+                            nodes.append(next_device)
 
             current += 1
 
