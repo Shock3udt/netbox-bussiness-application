@@ -53,9 +53,8 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
             for termination in node.cabletermination_set.select_related('cable').prefetch_related('cable__a_terminations__device', 'cable__b_terminations__device'):
                 cable = termination.cable
                 for t in cable.a_terminations + cable.b_terminations:
-                    if hasattr(t, 'device') and t.device and t.device.id not in visited_ids:
+                    if hasattr(t, 'device') and t.device:
                         nodes.append(t.device)
-                        visited_ids.add(t.device.id)
 
         return apps
 
