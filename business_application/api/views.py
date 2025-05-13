@@ -36,39 +36,28 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def _get_downstream_apps(self, device):
-        apps = set()
         seen_ids = set()
         nodes = [device]
-    
+        apps = set()
+
         while nodes:
             node = nodes.pop()
             if node.id in seen_ids:
                 continue
             seen_ids.add(node.id)
-    
+        
             apps.update(BusinessApplication.objects.filter(
                 Q(devices=node) | Q(virtual_machines__device=node)
             ))
-    
-            terminations = node.cabletermination_set.select_related('cable').prefetch_related(
-                'cable__a_terminations__device',
-                'cable__b_terminations__device'
-            )
-    
-            for termination in terminations:
+
+            for termination in node.cabletermination_set.select_related('cable').prefetch_related('cable__a_terminations__device', 'cable__b_terminations__device'):
                 cable = termination.cable
-    
-                for t in cable.a_terminations.all():
-                    t_device = getattr(t, 'device', None)
-                    if t_device and t_device.id not in seen_ids:
-                        nodes.append(t_device)
-    
-                for t in cable.b_terminations.all():
-                    t_device = getattr(t, 'device', None)
-                    if t_device and t_device.id not in seen_ids:
-                        nodes.append(t_device)
-    
-        return list(apps)
+                for t in cable.a_terminations + cable.b_terminations:
+                    if hasattr(t, 'device') and t.device and t.device.id not in visited_ids:
+                        nodes.append(t.device)
+                        visited_ids.add(t.device.id)
+
+        return apps
 
     def retrieve(self, request, pk=None):
         device = self.get_object()
