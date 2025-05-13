@@ -62,8 +62,21 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
         return Response(serializer.data)
 
     def list(self, request):
-        all_apps = set()
-        for device in self.queryset:
-            all_apps.update(self._get_downstream_apps(device))
-        serializer = BusinessApplicationSerializer(all_apps, many=True, context={'request': request})
-        return Response(serializer.data)
+        name_filter = request.query_params.get('name')
+        devices = self.queryset
+    
+        if name_filter:
+            devices = devices.filter(name__icontains=name_filter)
+    
+        result = {}
+    
+        for device in devices:
+            apps = self._get_downstream_apps(device)
+            serializer = BusinessApplicationSerializer(apps, many=True, context={'request': request})
+    
+            result[device.id] = {
+                "name": device.name,
+                "applications": serializer.data
+            }
+    
+        return Response(result)
