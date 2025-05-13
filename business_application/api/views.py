@@ -1,10 +1,11 @@
-from rest_framework.viewsets import ViewSet, ModelViewSet
+from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from business_application.models import BusinessApplication
 from business_application.api.serializers import BusinessApplicationSerializer
 from rest_framework.permissions import IsAuthenticated
 from dcim.models import Device
+from django.db.models import Q
 
 
 class BusinessApplicationViewSet(ModelViewSet):
@@ -28,15 +29,13 @@ class BusinessApplicationViewSet(ModelViewSet):
             queryset = queryset.filter(appcode__iexact=appcode)
         return queryset
 
-class DeviceDownstreamAppsViewSet(ViewSet):
+class DeviceDownstreamAppsViewSet(ModelViewSet):
+    queryset = Device.objects.all()
+    permission_classes = [IsAuthenticated]
+
     @action(detail=True, methods=['get'], url_path='downstream-applications')
     def downstream_applications(self, request, pk=None):
-        try:
-            device = Device.objects.get(pk=pk)
-        except Device.DoesNotExist:
-            return Response({'error': 'Device not found'}, status=404)
-
-        name_filter = request.query_params.get('device_name')
+        device = self.get_object()
         apps = set()
         visited = set()
         nodes = [device]
@@ -46,9 +45,6 @@ class DeviceDownstreamAppsViewSet(ViewSet):
             node = nodes[current]
             visited.add(node)
             current += 1
-
-            if name_filter and name_filter.lower() not in node.name.lower():
-                continue
 
             apps.update(BusinessApplication.objects.filter(
                 Q(devices=node) |
@@ -63,5 +59,4 @@ class DeviceDownstreamAppsViewSet(ViewSet):
                         nodes.append(next_dev)
 
         serializer = BusinessApplicationSerializer(apps, many=True, context={'request': request})
-        permission_classes = [IsAuthenticated]
         return Response(serializer.data)
