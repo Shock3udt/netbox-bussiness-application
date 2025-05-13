@@ -5,3 +5,5 @@ from business_application.api.views import BusinessApplicationViewSet, DeviceDow
 router = DefaultRouter()
 router.register(r'business-applications', BusinessApplicationViewSet, basename='businessapplication')
 router.register(r'devices', DeviceDownstreamAppsViewSet, basename='devicedownstreamapps')
+
+urlpatterns = router.urls
