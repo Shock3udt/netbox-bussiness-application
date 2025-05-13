@@ -7,6 +7,9 @@ from rest_framework.permissions import IsAuthenticated
 from dcim.models import Device
 from django.db.models import Q
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class BusinessApplicationViewSet(ModelViewSet):
     """
@@ -34,32 +37,38 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     @action(detail=True, methods=['get'], url_path='downstream-applications')
-    def downstream_applications(self, request, pk=None):
-        device = self.get_object()
+def downstream_applications(self, request, pk=None):
+    device = self.get_object()
+    logger.info(f"Starting downstream traversal for device {device} (ID={device.id})")
 
-        apps = set()
-        nodes = [device]
-        current = 0
+    apps = set()
+    nodes = [device]
+    visited_ids = set()
+    current = 0
 
-        while current < len(nodes):
-            node = nodes[current]
+    while current < len(nodes):
+        node = nodes[current]
+        logger.info(f"Visiting device {node.name} (ID={node.id})")
 
-            node_apps = BusinessApplication.objects.filter(
-                Q(devices=node) | Q(virtual_machines__device=node)
-            )
-            apps.update(node_apps)
+        # Collect apps
+        found_apps = BusinessApplication.objects.filter(
+            Q(devices=node) | Q(virtual_machines__device=node)
+        )
+        logger.info(f"Found {found_apps.count()} apps on device {node.name}")
+        apps.update(found_apps)
 
-            for cable_termination in node.cabletermination_set.all():
-                cable = cable_termination.cable
+        # Traverse cable connections
+        for termination in node.cabletermination_set.all():
+            cable = termination.cable
 
-                for termination in cable.a_terminations + cable.b_terminations:
-                    if termination and hasattr(termination, 'device'):
-                        next_device = termination.device
-                        if next_device and next_device not in nodes:
-                            # Optional: add role check if needed
-                            nodes.append(next_device)
+            for t in cable.a_terminations + cable.b_terminations:
+                if hasattr(t, 'device') and t.device and t.device.id not in visited_ids:
+                    nodes.append(t.device)
+                    visited_ids.add(t.device.id)
+                    logger.info(f"Found connected device: {t.device.name} (ID={t.device.id})")
 
-            current += 1
+        current += 1
 
-        serializer = BusinessApplicationSerializer(apps, many=True, context={'request': request})
-        return Response(serializer.data)
+    serializer = BusinessApplicationSerializer(apps, many=True, context={'request': request})
+    logger.info(f"Returning {len(apps)} downstream apps for device {device.name} (ID={device.id})")
+    return Response(serializer.data)
