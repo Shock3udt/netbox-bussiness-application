@@ -1,14 +1,10 @@
 from rest_framework.viewsets import ModelViewSet
-from rest_framework.decorators import action
 from rest_framework.response import Response
 from business_application.models import BusinessApplication
 from business_application.api.serializers import BusinessApplicationSerializer
 from rest_framework.permissions import IsAuthenticated
 from dcim.models import Device
 from django.db.models import Q
-
-import logging
-logger = logging.getLogger(__name__)
 
 
 class BusinessApplicationViewSet(ModelViewSet):
@@ -36,39 +32,38 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
     queryset = Device.objects.all()
     permission_classes = [IsAuthenticated]
 
-    @action(detail=True, methods=['get'], url_path='downstream-applications')
-    def downstream_applications(self, request, pk=None):
-        device = self.get_object()
-        logger.info(f"Starting downstream traversal for device {device} (ID={device.id})")
-    
+    def _get_downstream_apps(self, device):
         apps = set()
         nodes = [device]
-        visited_ids = set()
+        visited_ids = {device.id}
         current = 0
-    
+
         while current < len(nodes):
             node = nodes[current]
-            logger.info(f"Visiting device {node.name} (ID={node.id})")
-    
-            # Collect apps
             found_apps = BusinessApplication.objects.filter(
                 Q(devices=node) | Q(virtual_machines__device=node)
             )
-            logger.info(f"Found {found_apps.count()} apps on device {node.name}")
             apps.update(found_apps)
-    
-            # Traverse cable connections
+
             for termination in node.cabletermination_set.all():
                 cable = termination.cable
-    
                 for t in cable.a_terminations + cable.b_terminations:
                     if hasattr(t, 'device') and t.device and t.device.id not in visited_ids:
                         nodes.append(t.device)
                         visited_ids.add(t.device.id)
-                        logger.info(f"Found connected device: {t.device.name} (ID={t.device.id})")
-    
+
             current += 1
-    
+        return apps
+
+    def retrieve(self, request, pk=None):
+        device = self.get_object()
+        apps = self._get_downstream_apps(device)
         serializer = BusinessApplicationSerializer(apps, many=True, context={'request': request})
-        logger.info(f"Returning {len(apps)} downstream apps for device {device.name} (ID={device.id})")
+        return Response(serializer.data)
+
+    def list(self, request):
+        all_apps = set()
+        for device in self.queryset:
+            all_apps.update(self._get_downstream_apps(device))
+        serializer = BusinessApplicationSerializer(all_apps, many=True, context={'request': request})
         return Response(serializer.data)
