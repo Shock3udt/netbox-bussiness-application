@@ -31,32 +31,37 @@ class BusinessApplicationViewSet(ModelViewSet):
 
 class DeviceDownstreamAppsViewSet(ModelViewSet):
     queryset = Device.objects.all()
+    serializer_class = DeviceSerializer  # optional, not used by this action directly
     permission_classes = [IsAuthenticated]
 
     @action(detail=True, methods=['get'], url_path='downstream-applications')
     def downstream_applications(self, request, pk=None):
         device = self.get_object()
+
         apps = set()
-        visited = set()
         nodes = [device]
         current = 0
 
         while current < len(nodes):
             node = nodes[current]
-            visited.add(node)
+            apps.update(
+                BusinessApplication.objects.filter(
+                    Q(devices=node) | Q(virtual_machines__device=node)
+                )
+            )
+            for cable_termination in node.cabletermination_set.all():
+                cable = cable_termination.cable
+                for termination in cable.a_terminations + cable.b_terminations:
+                    next_device = getattr(termination, 'device', None)
+                    if (
+                        next_device
+                        and next_device != node
+                        and next_device.role == node.role
+                        and next_device not in nodes
+                    ):
+                        nodes.append(next_device)
+
             current += 1
-
-            apps.update(BusinessApplication.objects.filter(
-                Q(devices=node) |
-                Q(virtual_machines__device=node)
-            ))
-
-            for ct in node.cabletermination_set.all():
-                cable = ct.cable
-                for term in cable.a_terminations + cable.b_terminations:
-                    next_dev = getattr(term, 'device', None)
-                    if next_dev and next_dev not in visited and next_dev.role == node.role:
-                        nodes.append(next_dev)
 
         serializer = BusinessApplicationSerializer(apps, many=True, context={'request': request})
         return Response(serializer.data)
