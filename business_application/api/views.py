@@ -31,7 +31,6 @@ class BusinessApplicationViewSet(ModelViewSet):
 
 class DeviceDownstreamAppsViewSet(ModelViewSet):
     queryset = Device.objects.all()
-    serializer_class = DeviceSerializer  # optional, not used by this action directly
     permission_classes = [IsAuthenticated]
 
     @action(detail=True, methods=['get'], url_path='downstream-applications')
