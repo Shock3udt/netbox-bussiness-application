@@ -86,9 +86,7 @@ class ClusterAppCodeExtension(AppCodeExtension):
         processed_devices_ids = set()
 
         for vm in vms_in_cluster:
-            downstream_apps_set.update(BusinessApplication.objects.filter(virtual_machines=vm))
-
-            
+            downstream_apps_set.update(BusinessApplication.objects.filter(virtual_machines=vm))        
             if vm.device and vm.device.id not in processed_devices_ids:
                 nodes_to_traverse = [vm.device]
                 temp_visited_ids_for_path = {vm.device.id}
