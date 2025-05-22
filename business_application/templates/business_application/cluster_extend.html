@@ -1,0 +1,16 @@
+<div class="card">
+    <h5 class="card-header">
+        Downstream Application Codes
+    </h5>
+    <div class="card-body">
+        {% if downstream_app_codes %}
+            <ul>
+                {% for app_code in downstream_app_codes %}
+                    <li>{{ app_code }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No downstream application codes found for this cluster.</p>
+        {% endif %}
+    </div>
+</div>
