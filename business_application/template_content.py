@@ -99,13 +99,6 @@ class ClusterAppCodeExtension(AppCodeExtension):
                         Q(devices=current_device_node) | Q(virtual_machines__device=current_device_node)
                     ))
 
-                    for termination in current_device_node.cabletermination_set.all():
-                        cable = termination.cable
-                        for connected_termination in cable.a_terminations.all() + cable.b_terminations.all():
-                            if hasattr(connected_termination, 'device') and connected_termination.device:
-                                if connected_termination.device.id not in temp_visited_ids_for_path:
-                                    nodes_to_traverse.append(connected_termination.device)
-                                    temp_visited_ids_for_path.add(connected_termination.device.id)
                     current_node_index += 1
                 processed_devices_ids.add(vm.device.id)
 
