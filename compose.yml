@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: netbox
+      POSTGRES_USER: netbox
+      POSTGRES_PASSWORD: netbox
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "netbox"]
+      interval: 2s
+      retries: 30
+  netbox:
+    build:
+      context: .
+      dockerfile: build_docker
+    # … other options you already have …
+    entrypoint: ""
+    command:
+      - python
+      - /opt/netbox/netbox/manage.py
+      - makemigrations
+      - business_application
+    volumes:
+      # host → container
+      - ./:/opt/plugins/netbox-bussiness-application
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db          # <--- NOT 127.0.0.1
+      DB_PORT: 5432
+      DB_NAME: netbox
+      DB_USER: netbox
+      DB_PASSWORD: netbox
+      DEVELOPER: "true"
+      SECRET_KEY: 'r(m)9nLGnz$(_q3N4z1k(EFsMCjjjzx08x9VhNVcfd%6RF#r!6DE@+V5Zk2X'
