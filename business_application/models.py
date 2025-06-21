@@ -62,6 +62,12 @@ class TechnicalService(NetBoxModel):
     class Meta:
         ordering = ['name']
 
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:technicalservice_detail', args=[self.pk])
+
+    def __str__(self):
+        return self.name
+
 class EventStatus(ChoiceSet):
     TRIGGERED = 'triggered'
     OK        = 'ok'
@@ -82,6 +88,12 @@ class EventSource(NetBoxModel):        # reference catalog
     name = models.CharField(max_length=64, unique=True)
     description = models.TextField(blank=True)
 
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:eventsource_detail', args=[self.pk])
+
+    def __str__(self):
+        return self.name
+
 class Event(NetBoxModel):
     created_at    = models.DateTimeField(auto_now_add=True)
     last_seen_at  = models.DateTimeField()
@@ -97,6 +109,12 @@ class Event(NetBoxModel):
     event_source  = models.ForeignKey('EventSource', on_delete=models.SET_NULL,
                                       null=True, blank=True)
     raw           = models.JSONField()
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:event_detail', args=[self.pk])
+
+    def __str__(self):
+        return f"{self.message[:50]}..."
 
 
 class MaintenanceStatus(ChoiceSet):
@@ -118,9 +136,21 @@ class Maintenance(NetBoxModel):
     object_id     = models.PositiveIntegerField()
     obj           = GenericForeignKey('content_type','object_id')
 
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:maintenance_detail', args=[self.pk])
+
+    def __str__(self):
+        return f"{self.description[:50]}..."
+
 class ChangeType(NetBoxModel):        # reference catalog
     name = models.CharField(max_length=64, unique=True)
     description = models.TextField(blank=True)
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:changetype_detail', args=[self.pk])
+
+    def __str__(self):
+        return self.name
 
 class Change(NetBoxModel):
     type          = models.ForeignKey(ChangeType, on_delete=models.PROTECT)
@@ -129,3 +159,9 @@ class Change(NetBoxModel):
     content_type  = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id     = models.PositiveIntegerField()
     obj           = GenericForeignKey('content_type','object_id')
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:change_detail', args=[self.pk])
+
+    def __str__(self):
+        return f"{self.description[:50]}..."
