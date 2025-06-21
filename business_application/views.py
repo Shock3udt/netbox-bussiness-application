@@ -51,7 +51,7 @@ class TechnicalServiceChangeLogView(generic.ObjectChangeLogView):
 
 class TechnicalServiceDetailView(generic.ObjectView):
     queryset = TechnicalService.objects.all()
-    template_name = 'business_application/technicalservice/technicalservice.html'
+    template_name = 'business_application/technicalservice.html'
 
 class TechnicalServiceCreateView(generic.ObjectEditView):
     queryset = TechnicalService.objects.all()
@@ -75,7 +75,7 @@ class EventSourceChangeLogView(generic.ObjectChangeLogView):
 
 class EventSourceDetailView(generic.ObjectView):
     queryset = EventSource.objects.all()
-    template_name = 'business_application/eventsource/eventsource.html'
+    template_name = 'business_application/eventsource.html'
 
 class EventSourceCreateView(generic.ObjectEditView):
     queryset = EventSource.objects.all()
@@ -99,7 +99,7 @@ class EventChangeLogView(generic.ObjectChangeLogView):
 
 class EventDetailView(generic.ObjectView):
     queryset = Event.objects.all()
-    template_name = 'business_application/event/event.html'
+    template_name = 'business_application/event.html'
 
 class EventCreateView(generic.ObjectEditView):
     queryset = Event.objects.all()
@@ -123,7 +123,7 @@ class MaintenanceChangeLogView(generic.ObjectChangeLogView):
 
 class MaintenanceDetailView(generic.ObjectView):
     queryset = Maintenance.objects.all()
-    template_name = 'business_application/maintenance/maintenance.html'
+    template_name = 'business_application/maintenance.html'
 
 class MaintenanceCreateView(generic.ObjectEditView):
     queryset = Maintenance.objects.all()
@@ -147,7 +147,7 @@ class ChangeTypeChangeLogView(generic.ObjectChangeLogView):
 
 class ChangeTypeDetailView(generic.ObjectView):
     queryset = ChangeType.objects.all()
-    template_name = 'business_application/changetype/changetype.html'
+    template_name = 'business_application/changetype.html'
 
 class ChangeTypeCreateView(generic.ObjectEditView):
     queryset = ChangeType.objects.all()
@@ -171,7 +171,7 @@ class ChangeChangeLogView(generic.ObjectChangeLogView):
 
 class ChangeDetailView(generic.ObjectView):
     queryset = Change.objects.all()
-    template_name = 'business_application/change/change.html'
+    template_name = 'business_application/change.html'
 
 class ChangeCreateView(generic.ObjectEditView):
     queryset = Change.objects.all()

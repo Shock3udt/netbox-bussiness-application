@@ -1,0 +1,205 @@
+{% extends 'generic/object.html' %}
+{% load buttons %}
+{% load custom_links %}
+{% load helpers %}
+{% load plugins %}
+{% load render_table from django_tables2 %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'plugins:business_application:technicalservice_list' %}">Technical Services</a></li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <!-- Full Width Column for Name -->
+    <div class="col-md-12">
+        <div class="card">
+            <h5 class="card-header">
+                Technical Service Details
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <td>Name</td>
+                        <td>{{ object.name }}</td>
+                    </tr>
+                    <tr>
+                        <td>Parent Service</td>
+                        <td>
+                            {% if object.parent %}
+                                <a href="{{ object.parent.get_absolute_url }}">{{ object.parent.name }}</a>
+                            {% else %}
+                                <em>None</em>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Left Column: Custom Fields and Tags -->
+    <div class="col-md-4">
+        {% include 'inc/panels/custom_fields.html' %}
+        {% include 'inc/panels/tags.html' %}
+        {% include 'inc/panels/comments.html' %}
+        {% plugin_left_page object %}
+    </div>
+
+    <!-- Right Column: Associated Objects -->
+    <div class="col-md-8">
+        <!-- Business Applications -->
+        <div class="card">
+            <h5 class="card-header">
+                Associated Business Applications
+            </h5>
+            <div class="card-body">
+                {% if object.business_apps.count > 0 %}
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>App Code</th>
+                                <th>Name</th>
+                                <th>Owner</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for app in object.business_apps.all %}
+                            <tr>
+                                <td><a href="{{ app.get_absolute_url }}">{{ app.appcode }}</a></td>
+                                <td>{{ app.name }}</td>
+                                <td>{{ app.owner }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No associated business applications.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Virtual Machines -->
+        <div class="card">
+            <h5 class="card-header">
+                Associated Virtual Machines
+            </h5>
+            <div class="card-body">
+                {% if object.vms.count > 0 %}
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Cluster</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for vm in object.vms.all %}
+                            <tr>
+                                <td><a href="{{ vm.get_absolute_url }}">{{ vm.name }}</a></td>
+                                <td>{{ vm.cluster.name|default:"N/A" }}</td>
+                                <td>{{ vm.status|default:"N/A" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No associated virtual machines.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Devices -->
+        <div class="card">
+            <h5 class="card-header">
+                Associated Devices
+            </h5>
+            <div class="card-body">
+                {% if object.devices.count > 0 %}
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Role</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for device in object.devices.all %}
+                            <tr>
+                                <td><a href="{{ device.get_absolute_url }}">{{ device.name }}</a></td>
+                                <td>{{ device.type.name|default:"N/A" }}</td>
+                                <td>{{ device.role.name|default:"N/A" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No associated devices.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Clusters -->
+        <div class="card">
+            <h5 class="card-header">
+                Associated Clusters
+            </h5>
+            <div class="card-body">
+                {% if object.clusters.count > 0 %}
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Site</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cluster in object.clusters.all %}
+                            <tr>
+                                <td><a href="{{ cluster.get_absolute_url }}">{{ cluster.name }}</a></td>
+                                <td>{{ cluster.type.name|default:"N/A" }}</td>
+                                <td>{{ cluster.site.name|default:"N/A" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No associated clusters.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Child Services -->
+        <div class="card">
+            <h5 class="card-header">
+                Child Services
+            </h5>
+            <div class="card-body">
+                {% if object.children.count > 0 %}
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for child in object.children.all %}
+                            <tr>
+                                <td><a href="{{ child.get_absolute_url }}">{{ child.name }}</a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No child services.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% plugin_right_page object %}
+    </div>
+</div>
+{% endblock %}
