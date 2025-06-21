@@ -47,6 +47,11 @@ class TechnicalService(NetBoxModel):
                                          related_name='children',
                                          on_delete=models.SET_NULL)
     name             = models.CharField(max_length=240, unique=True)
+    depends_on       = models.ManyToManyField('self',
+                                              related_name='dependent_services',
+                                              blank=True,
+                                              symmetrical=False,
+                                              help_text='Services this service depends on')
     business_apps    = models.ManyToManyField(BusinessApplication,
                                               related_name='technical_services',
                                               blank=True)
@@ -72,17 +77,21 @@ class EventStatus(ChoiceSet):
     TRIGGERED = 'triggered'
     OK        = 'ok'
     SUPPRESSED= 'suppressed'
-    CHOICES = ((TRIGGERED,'Triggered'),
-               (OK,'OK'),
-               (SUPPRESSED,'Suppressed'))
+    CHOICES = [
+        (TRIGGERED, 'Triggered', 'red'),
+        (OK, 'OK', 'green'),
+        (SUPPRESSED, 'Suppressed', 'gray'),
+    ]
 
 class EventCrit(ChoiceSet):
     CRITICAL = 'critical'
     WARNING  = 'warning'
     INFO     = 'info'
-    CHOICES  = ((CRITICAL,'Critical'),
-                (WARNING,'Warning'),
-                (INFO,'Info'))
+    CHOICES = [
+        (CRITICAL, 'Critical', 'red'),
+        (WARNING, 'Warning', 'orange'),
+        (INFO, 'Info', 'blue'),
+    ]
 
 class EventSource(NetBoxModel):        # reference catalog
     name = models.CharField(max_length=64, unique=True)

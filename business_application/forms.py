@@ -30,6 +30,7 @@ class TechnicalServiceForm(forms.ModelForm):
         fields = [
             'name',
             'parent',
+            'depends_on',
             'business_apps',
             'vms',
             'devices',

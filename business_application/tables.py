@@ -19,6 +19,7 @@ class BusinessApplicationTable(NetBoxTable):
 class TechnicalServiceTable(NetBoxTable):
     name = tables.Column(linkify=True)
     parent = tables.Column(linkify=True)
+    dependencies_count = tables.Column(verbose_name="Dependencies", accessor="depends_on.count")
     business_apps_count = tables.Column(verbose_name="Business Apps", accessor="business_apps.count")
     vms_count = tables.Column(verbose_name="VMs", accessor="vms.count")
     devices_count = tables.Column(verbose_name="Devices", accessor="devices.count")
@@ -26,7 +27,7 @@ class TechnicalServiceTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = TechnicalService
-        fields = ['name', 'parent', 'business_apps_count', 'vms_count', 'devices_count', 'clusters_count']
+        fields = ['name', 'parent', 'dependencies_count', 'business_apps_count', 'vms_count', 'devices_count', 'clusters_count']
 
 class EventSourceTable(NetBoxTable):
     name = tables.Column(linkify=True)
@@ -39,8 +40,36 @@ class EventSourceTable(NetBoxTable):
 
 class EventTable(NetBoxTable):
     message = tables.Column(linkify=True)
-    status = tables.Column()
-    criticallity = tables.Column(verbose_name="Criticality")
+    status = tables.TemplateColumn(
+        template_code="""
+        {% load helpers %}
+        {% if record.status == 'triggered' %}
+            <span class="badge bg-danger text-light"><i class="mdi mdi-alert-circle"></i> {{ record.get_status_display }}</span>
+        {% elif record.status == 'ok' %}
+            <span class="badge bg-success text-light"><i class="mdi mdi-check-circle"></i> {{ record.get_status_display }}</span>
+        {% elif record.status == 'suppressed' %}
+            <span class="badge bg-secondary text-light"><i class="mdi mdi-volume-off"></i> {{ record.get_status_display }}</span>
+        {% else %}
+            <span class="badge bg-light text-dark">{{ record.get_status_display }}</span>
+        {% endif %}
+        """,
+        verbose_name="Status"
+    )
+    criticallity = tables.TemplateColumn(
+        template_code="""
+        {% load helpers %}
+        {% if record.criticallity == 'critical' %}
+            <span class="badge bg-danger text-light"><i class="mdi mdi-alert"></i> {{ record.get_criticallity_display }}</span>
+        {% elif record.criticallity == 'warning' %}
+            <span class="badge bg-warning text-dark"><i class="mdi mdi-alert-outline"></i> {{ record.get_criticallity_display }}</span>
+        {% elif record.criticallity == 'info' %}
+            <span class="badge bg-info text-light"><i class="mdi mdi-information"></i> {{ record.get_criticallity_display }}</span>
+        {% else %}
+            <span class="badge bg-light text-dark">{{ record.get_criticallity_display }}</span>
+        {% endif %}
+        """,
+        verbose_name="Criticality"
+    )
     event_source = tables.Column(linkify=True)
     last_seen_at = tables.DateTimeColumn()
     obj = tables.Column(verbose_name="Related Object")

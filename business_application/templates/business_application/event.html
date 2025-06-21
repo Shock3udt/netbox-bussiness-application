@@ -25,11 +25,31 @@
                     </tr>
                     <tr>
                         <td>Status</td>
-                        <td><span class="badge badge-{{ object.status }}">{{ object.get_status_display }}</span></td>
+                        <td>
+                            {% if object.status == 'triggered' %}
+                                <span class="badge bg-danger text-light"><i class="mdi mdi-alert-circle"></i> {{ object.get_status_display }}</span>
+                            {% elif object.status == 'ok' %}
+                                <span class="badge bg-success text-light"><i class="mdi mdi-check-circle"></i> {{ object.get_status_display }}</span>
+                            {% elif object.status == 'suppressed' %}
+                                <span class="badge bg-secondary text-light"><i class="mdi mdi-volume-off"></i> {{ object.get_status_display }}</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark">{{ object.get_status_display }}</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr>
                         <td>Criticality</td>
-                        <td><span class="badge badge-{{ object.criticallity }}">{{ object.get_criticallity_display }}</span></td>
+                        <td>
+                            {% if object.criticallity == 'critical' %}
+                                <span class="badge bg-danger text-light"><i class="mdi mdi-alert"></i> {{ object.get_criticallity_display }}</span>
+                            {% elif object.criticallity == 'warning' %}
+                                <span class="badge bg-warning text-dark"><i class="mdi mdi-alert-outline"></i> {{ object.get_criticallity_display }}</span>
+                            {% elif object.criticallity == 'info' %}
+                                <span class="badge bg-info text-light"><i class="mdi mdi-information"></i> {{ object.get_criticallity_display }}</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark">{{ object.get_criticallity_display }}</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr>
                         <td>Dedup ID</td>

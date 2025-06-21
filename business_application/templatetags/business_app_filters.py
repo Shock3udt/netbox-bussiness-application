@@ -1,0 +1,123 @@
+from django import template
+from django.utils.safestring import mark_safe
+
+register = template.Library()
+
+@register.filter
+def event_status_badge(status, display_name=None):
+    """
+    Render an event status as a colored badge with icon.
+    """
+    if display_name is None:
+        display_name = status.replace('_', ' ').title()
+
+    badge_configs = {
+        'triggered': {
+            'class': 'bg-danger text-light',
+            'icon': 'mdi-alert-circle',
+            'label': 'Triggered'
+        },
+        'ok': {
+            'class': 'bg-success text-light',
+            'icon': 'mdi-check-circle',
+            'label': 'OK'
+        },
+        'suppressed': {
+            'class': 'bg-secondary text-light',
+            'icon': 'mdi-volume-off',
+            'label': 'Suppressed'
+        }
+    }
+
+    config = badge_configs.get(status, {
+        'class': 'bg-light text-dark',
+        'icon': 'mdi-help-circle',
+        'label': display_name or status
+    })
+
+    return mark_safe(
+        f'<span class="badge {config["class"]}">'
+        f'<i class="mdi {config["icon"]}"></i> {config["label"]}'
+        f'</span>'
+    )
+
+@register.filter
+def event_criticality_badge(criticality, display_name=None):
+    """
+    Render an event criticality as a colored badge with icon.
+    """
+    if display_name is None:
+        display_name = criticality.replace('_', ' ').title()
+
+    badge_configs = {
+        'critical': {
+            'class': 'bg-danger text-light',
+            'icon': 'mdi-alert',
+            'label': 'Critical'
+        },
+        'warning': {
+            'class': 'bg-warning text-dark',
+            'icon': 'mdi-alert-outline',
+            'label': 'Warning'
+        },
+        'info': {
+            'class': 'bg-info text-light',
+            'icon': 'mdi-information',
+            'label': 'Info'
+        }
+    }
+
+    config = badge_configs.get(criticality, {
+        'class': 'bg-light text-dark',
+        'icon': 'mdi-help-circle',
+        'label': display_name or criticality
+    })
+
+    return mark_safe(
+        f'<span class="badge {config["class"]}">'
+        f'<i class="mdi {config["icon"]}"></i> {config["label"]}'
+        f'</span>'
+    )
+
+@register.filter
+def maintenance_status_badge(status, display_name=None):
+    """
+    Render a maintenance status as a colored badge with icon.
+    """
+    if display_name is None:
+        display_name = status.replace('_', ' ').title()
+
+    badge_configs = {
+        'planned': {
+            'class': 'bg-primary text-light',
+            'icon': 'mdi-calendar-clock',
+            'label': 'Planned'
+        },
+        'started': {
+            'class': 'bg-warning text-dark',
+            'icon': 'mdi-wrench',
+            'label': 'Started'
+        },
+        'finished': {
+            'class': 'bg-success text-light',
+            'icon': 'mdi-check-circle',
+            'label': 'Finished'
+        },
+        'canceled': {
+            'class': 'bg-secondary text-light',
+            'icon': 'mdi-cancel',
+            'label': 'Canceled'
+        }
+    }
+
+    config = badge_configs.get(status, {
+        'class': 'bg-light text-dark',
+        'icon': 'mdi-help-circle',
+        'label': display_name or status
+    })
+
+    return mark_safe(
+        f'<span class="badge {config["class"]}">'
+        f'<i class="mdi {config["icon"]}"></i> {config["label"]}'
+        f'</span>'
+    )

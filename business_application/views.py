@@ -1,4 +1,6 @@
 from netbox.views import generic
+from utilities.views import ViewTab, register_model_view
+from django.shortcuts import render
 from .models import (
     BusinessApplication, TechnicalService, EventSource, Event,
     Maintenance, ChangeType, Change
@@ -48,6 +50,29 @@ class TechnicalServiceListView(generic.ObjectListView):
 
 class TechnicalServiceChangeLogView(generic.ObjectChangeLogView):
     queryset = TechnicalService.objects.all()
+
+@register_model_view(TechnicalService, name='operations', path='operations')
+class TechnicalServiceOperationsView(generic.ObjectView):
+    queryset = TechnicalService.objects.all()
+    template_name = 'business_application/technicalservice/operations.html'
+
+    tab = ViewTab(
+        label='Operations',
+        badge=lambda obj: obj.devices.count() + obj.vms.count() + obj.clusters.count(),
+        permission='business_application.view_technicalservice',
+        weight=100
+    )
+
+    def get(self, request, pk):
+        obj = self.get_object(pk=pk)
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+            }
+        )
 
 class TechnicalServiceDetailView(generic.ObjectView):
     queryset = TechnicalService.objects.all()

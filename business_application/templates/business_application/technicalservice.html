@@ -33,6 +33,30 @@
                             {% endif %}
                         </td>
                     </tr>
+                    <tr>
+                        <td>Dependencies</td>
+                        <td>
+                            {% if object.depends_on.count > 0 %}
+                                {% for dependency in object.depends_on.all %}
+                                    <a href="{{ dependency.get_absolute_url }}" class="badge bg-primary me-1">{{ dependency.name }}</a>
+                                {% endfor %}
+                            {% else %}
+                                <em>None</em>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Dependent Services</td>
+                        <td>
+                            {% if object.dependent_services.count > 0 %}
+                                {% for dependent in object.dependent_services.all %}
+                                    <a href="{{ dependent.get_absolute_url }}" class="badge bg-secondary me-1">{{ dependent.name }}</a>
+                                {% endfor %}
+                            {% else %}
+                                <em>None</em>
+                            {% endif %}
+                        </td>
+                    </tr>
                 </table>
             </div>
         </div>
