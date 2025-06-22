@@ -1,5 +1,6 @@
 from django.conf import settings
 from netbox.plugins import PluginMenuItem, PluginMenu, PluginMenuButton
+from netbox.choices import ButtonColorChoices
 
 
 _business_menu_items = (
@@ -39,6 +40,21 @@ _change_menu_items = (
     ),
 )
 
+_calendar_menu_items = (
+    PluginMenuItem(
+        link='plugins:business_application:calendar_view',
+        link_text='Calendar',
+        buttons=(
+            PluginMenuButton(
+                link='plugins:business_application:calendar_view',
+                title='View Calendar',
+                icon_class='mdi mdi-calendar',
+                color=ButtonColorChoices.BLUE
+            ),
+        )
+    ),
+)
+
 
 menu = PluginMenu(
     label="Business Application",
@@ -46,6 +62,7 @@ menu = PluginMenu(
         ("Business", _business_menu_items),
         ("Operations", _operations_menu_items),
         ("Change Management", _change_menu_items),
+        ("Calendar", _calendar_menu_items),
     ),
     icon_class="mdi mdi-apps",
 )

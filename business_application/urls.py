@@ -59,4 +59,7 @@ urlpatterns = [
     path('change/<int:pk>/edit/', views.ChangeEditView.as_view(), name='change_edit'),
     path('change/<int:pk>/delete/', views.ChangeDeleteView.as_view(), name='change_delete'),
     path('change/<int:pk>/', include(get_model_urls('business_application', 'change'))),
+
+    # Calendar URL
+    path('calendar/', views.CalendarView.as_view(), name='calendar_view'),
 ]
