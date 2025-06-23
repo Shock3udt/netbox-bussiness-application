@@ -316,11 +316,9 @@ class CalendarView(TemplateView):
         ).order_by('last_seen_at')
 
         maintenances = Maintenance.objects.filter(maintenance_filter).filter(
-            Q(planned_start__date__lt=end_date.date()) |
-            Q(planned_end__date__gte=start_date.date())
+            Q(planned_start__date__lt=end_date.date(), planned_end__date__gte=start_date.date())
         ).order_by('planned_start') if maintenance_filter else Maintenance.objects.filter(
-            Q(planned_start__date__lt=end_date.date()) |
-            Q(planned_end__date__gte=start_date.date())
+            Q(planned_start__date__lt=end_date.date(), planned_end__date__gte=start_date.date())
         ).order_by('planned_start')
 
         changes = Change.objects.filter(changes_filter).filter(
@@ -368,7 +366,7 @@ class CalendarView(TemplateView):
             calendar_events.append({
                 'title': format_event_title(change),
                 'start_ts': int(change.created_at.timestamp() * 1000),
-                'end_ts': change.created_at.timestamp(),
+                'end_ts': int(change.created_at.timestamp() * 1000),
                 'date': change.created_at.strftime('%Y-%m-%d'),
                 'time': change.created_at.strftime('%H:%M'),
                 'type': 'change',

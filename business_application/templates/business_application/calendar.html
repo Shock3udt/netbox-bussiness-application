@@ -20,137 +20,169 @@
         <i class="mdi mdi-calendar"></i>
         Business Application Calendar
     </h1>
-    <div class="btn-group" role="group">
-        <button type="button" class="btn btn-sm btn-outline-primary" onclick="previousMonth()">
-            <i class="mdi mdi-chevron-left"></i> Previous
-        </button>
-        <button type="button" class="btn btn-sm btn-outline-primary" onclick="nextMonth()">
-            Next <i class="mdi mdi-chevron-right"></i>
-        </button>
-        <button type="button" class="btn btn-sm btn-primary" onclick="goToToday()">
-            <i class="mdi mdi-calendar-today"></i> Today
-        </button>
+</div>
+
+<!-- Top Navigation Tabs -->
+<div class="card mt-3">
+    <div class="card-header p-0">
+        <div class="d-flex justify-content-between align-items-center">
+            <!-- Left side tabs -->
+            <ul class="nav nav-tabs card-header-tabs mb-0" id="calendarTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="filters-tab" data-bs-toggle="tab" data-bs-target="#filters-pane"
+                            type="button" role="tab" aria-controls="filters-pane" aria-selected="false">
+                        <i class="mdi mdi-filter"></i> Filters
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="legend-tab" data-bs-toggle="tab" data-bs-target="#legend-pane"
+                            type="button" role="tab" aria-controls="legend-pane" aria-selected="false">
+                        <i class="mdi mdi-information"></i> Legend
+                    </button>
+                </li>
+            </ul>
+
+
+        </div>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="tab-content" id="calendarTabContent">
+        <!-- Filters Tab -->
+        <div class="tab-pane fade" id="filters-pane" role="tabpanel" aria-labelledby="filters-tab">
+            <div class="card-body">
+                <form method="get" id="filter-form">
+                    <div class="row">
+                        <!-- Business Applications -->
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Business Applications</label>
+                            <select multiple
+                                    class="form-select"
+                                    name="business_apps"
+                                    data-api-url="/api/plugins/business-application/business-applications/"
+                                    data-display-field="name"
+                                    data-value-field="id"
+                                    data-placeholder="Select Business Applications..."
+                                    data-search-field="name,appcode"
+                                    data-live-search="true">
+                                {% for app in business_applications %}
+                                    <option value="{{ app.id }}"
+                                            data-content="{{ app.appcode }} - {{ app.name }}"
+                                            {% if app.id|stringformat:"s" in selected_apps %}selected{% endif %}>
+                                        {{ app.appcode }} - {{ app.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Search and select multiple business applications</small>
+                        </div>
+
+                        <!-- Technical Services -->
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Technical Services</label>
+                            <select multiple
+                                    class="form-select"
+                                    name="services"
+                                    data-api-url="/api/plugins/business-application/technical-services/"
+                                    data-display-field="name"
+                                    data-value-field="id"
+                                    data-placeholder="Select Technical Services..."
+                                    data-search-field="name"
+                                    data-live-search="true">
+                                {% for service in technical_services %}
+                                    <option value="{{ service.id }}"
+                                            data-content="{{ service.name }}"
+                                            {% if service.id|stringformat:"s" in selected_services %}selected{% endif %}>
+                                        {{ service.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Search and select multiple technical services</small>
+                        </div>
+
+                        <!-- Include Dependents -->
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Options</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="include_dependents"
+                                       id="include_dependents" {% if include_dependents %}checked{% endif %}>
+                                <label class="form-check-label" for="include_dependents">
+                                    Include Dependent Services
+                                </label>
+                            </div>
+                            <small class="form-text text-muted">Show services that services depend on.</small>
+
+                            <div class="d-grid gap-2 mt-3">
+                                <button type="submit" class="btn btn-primary btn-sm">
+                                    <i class="mdi mdi-magnify"></i> Apply Filters
+                                </button>
+                                <a href="{% url 'plugins:business_application:calendar_view' %}" class="btn btn-outline-secondary btn-sm">
+                                    <i class="mdi mdi-refresh"></i> Clear Filters
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Legend Tab -->
+        <div class="tab-pane fade" id="legend-pane" role="tabpanel" aria-labelledby="legend-tab">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="mb-2">
+                            <span class="badge bg-danger me-2 text-light"><i class="mdi mdi-alert-circle"></i></span>
+                            <small>Events</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-2">
+                            <span class="badge bg-warning text-dark me-2"><i class="mdi mdi-wrench"></i></span>
+                            <small>Maintenance</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-2">
+                            <span class="badge bg-info me-2 text-light"><i class="mdi mdi-swap-vertical"></i></span>
+                            <small>Changes</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block content %}
 <div class="row">
-    <!-- Filters Panel -->
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title">
-                    <i class="mdi mdi-filter"></i>
-                    Filters
-                </h5>
-            </div>
-            <div class="card-body">
-                <form method="get" id="filter-form">
-                    <!-- Business Applications -->
-                    <div class="mb-3">
-                        <label class="form-label">Business Applications</label>
-                        <select multiple
-                                class="form-select"
-                                name="business_apps"
-                                data-api-url="/api/plugins/business-application/business-applications/"
-                                data-display-field="name"
-                                data-value-field="id"
-                                data-placeholder="Select Business Applications..."
-                                data-search-field="name,appcode"
-                                data-live-search="true">
-                            {% for app in business_applications %}
-                                <option value="{{ app.id }}"
-                                        data-content="{{ app.appcode }} - {{ app.name }}"
-                                        {% if app.id|stringformat:"s" in selected_apps %}selected{% endif %}>
-                                    {{ app.appcode }} - {{ app.name }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                        <small class="form-text text-muted">Search and select multiple business applications</small>
-                    </div>
-
-                    <!-- Technical Services -->
-                    <div class="mb-3">
-                        <label class="form-label">Technical Services</label>
-                        <select multiple
-                                class="form-select"
-                                name="services"
-                                data-api-url="/api/plugins/business-application/technical-services/"
-                                data-display-field="name"
-                                data-value-field="id"
-                                data-placeholder="Select Technical Services..."
-                                data-search-field="name"
-                                data-live-search="true">
-                            {% for service in technical_services %}
-                                <option value="{{ service.id }}"
-                                        data-content="{{ service.name }}"
-                                        {% if service.id|stringformat:"s" in selected_services %}selected{% endif %}>
-                                    {{ service.name }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                        <small class="form-text text-muted">Search and select multiple technical services</small>
-                    </div>
-
-                    <!-- Include Dependents -->
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="include_dependents"
-                                   id="include_dependents" {% if include_dependents %}checked{% endif %}>
-                            <label class="form-check-label" for="include_dependents">
-                                Include Dependent Services
-                            </label>
-                        </div>
-                        <small class="form-text text-muted">Show services that services depend on.</small>
-                    </div>
-
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-sm">
-                            <i class="mdi mdi-magnify"></i> Apply Filters
-                        </button>
-                        <a href="{% url 'plugins:business_application:calendar_view' %}" class="btn btn-outline-secondary btn-sm">
-                            <i class="mdi mdi-refresh"></i> Clear Filters
-                        </a>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Legend -->
-        <div class="card mt-3">
-            <div class="card-header">
-                <h6 class="card-title">
-                    <i class="mdi mdi-information"></i>
-                    Legend
-                </h6>
-            </div>
-            <div class="card-body">
-                <div class="mb-2">
-                    <span class="badge bg-danger me-2 text-light"><i class="mdi mdi-alert-circle"></i></span>
-                    <small>Events</small>
-                </div>
-                <div class="mb-2">
-                    <span class="badge bg-warning text-dark me-2"><i class="mdi mdi-wrench"></i></span>
-                    <small>Maintenance</small>
-                </div>
-                <div class="mb-2">
-                    <span class="badge bg-info me-2 text-light"><i class="mdi mdi-swap-vertical"></i></span>
-                    <small>Changes</small>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Calendar Content -->
     <div class="col-md-12">
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title" id="calendar-title">
-                    <i class="mdi mdi-calendar-month"></i>
-                    <span id="calendar-month-year">{{ start_date|date:"F Y" }}</span>
-                    <span class="badge bg-secondary text-light ms-2">{{ calendar_events|length }} events</span>
-                </h5>
+                <div class="d-flex justify-content-between align-items-center">
+                    <!-- Left side: Month/Year and event count -->
+                    <div class="d-flex align-items-center">
+                        <h5 class="card-title mb-0 me-3" id="calendar-title">
+                            <i class="mdi mdi-calendar-month"></i>
+                            <span id="calendar-month-year">{{ start_date|date:"F Y" }}</span>
+                        </h5>
+                        <span class="badge bg-secondary text-light">{{ calendar_events|length }} events</span>
+                    </div>
+
+                    <!-- Right side: Navigation controls -->
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="previousMonth()" title="Previous Month">
+                            <i class="mdi mdi-chevron-left"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="goToToday()" title="Go to Today">
+                            <i class="mdi mdi-calendar-today"></i> Today
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="nextMonth()" title="Next Month">
+                            <i class="mdi mdi-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
             <div class="card-body">
                 {% if calendar_events %}
@@ -202,7 +234,7 @@
                                         </td>
                                         <td>
                                             {% if event.type == 'event' %}
-                                                <span class="badge bg-danger">
+                                                <span class="badge bg-danger text-light">
                                                     <i class="mdi mdi-alert-circle"></i> Event
                                                 </span>
                                             {% elif event.type == 'maintenance' %}
@@ -210,7 +242,7 @@
                                                     <i class="mdi mdi-wrench"></i> Maintenance
                                                 </span>
                                             {% elif event.type == 'change' %}
-                                                <span class="badge bg-info">
+                                                <span class="badge bg-info text-light">
                                                     <i class="mdi mdi-swap-vertical"></i> Change
                                                 </span>
                                             {% endif %}
@@ -227,7 +259,7 @@
                                             {% elif event.type == 'maintenance' %}
                                                 {{ event.status|maintenance_status_badge }}
                                             {% elif event.type == 'change' %}
-                                                <span class="badge bg-secondary">{{ event.change_type }}</span>
+                                                <span class="badge bg-secondary text-light">{{ event.change_type }}</span>
                                             {% endif %}
                                         </td>
                                         <td>
@@ -312,7 +344,7 @@
 }
 
 .calendar-event {
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     padding: 0.125rem 0.25rem;
     margin-bottom: 0.125rem;
     border-radius: 0.25rem;
@@ -330,6 +362,7 @@
 
 .calendar-event.event {
     background-color: #dc3545;
+    color: #eee;
 }
 
 .calendar-event.maintenance {
@@ -339,6 +372,7 @@
 
 .calendar-event.change {
     background-color: #0dcaf0;
+    color: #eee;
 }
 </style>
 
@@ -431,13 +465,13 @@ function generateCalendar() {
             const start_ts = currentDate.getTime();
             const end_ts = nextDate.getTime();
 
-            const dayEvents = calendarEvents.filter(event => event.start_ts <= end_ts && event.end_ts >= start_ts);
+            const dayEvents = calendarEvents.filter(event => event.start_ts <= end_ts && (event.end_ts ?? event.start_ts) >= start_ts);
 
             dayEvents.forEach(event => {
                 const eventDiv = document.createElement('a');
                 eventDiv.className = `calendar-event ${event.type}`;
                 eventDiv.href = event.url;
-                eventDiv.textContent = event.title.substring(0, 20) + (event.title.length > 20 ? '...' : '');
+                eventDiv.textContent = event.title;
                 eventDiv.title = event.title;
                 dayDiv.appendChild(eventDiv);
             });
@@ -537,19 +571,66 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Handle tab switching and auto-close behavior
+    setupTabBehavior();
+
     console.log('Calendar initialized successfully');
 
     // Initialize Select2 multiselect widgets
     initializeSelect2();
 });
 
+function setupTabBehavior() {
+    // Auto-close tabs when clicking outside or on calendar
+    document.addEventListener('click', function(event) {
+        const tabContent = document.getElementById('calendarTabContent');
+        const tabNavs = document.getElementById('calendarTabs');
+        const isTabClick = tabNavs.contains(event.target);
+        const isTabContentClick = tabContent.contains(event.target);
+
+        if (!isTabClick && !isTabContentClick) {
+            // Close all tabs
+            const activeTab = document.querySelector('#calendarTabs .nav-link.active');
+            const activePane = document.querySelector('#calendarTabContent .tab-pane.show.active');
+
+            if (activeTab) {
+                activeTab.classList.remove('active');
+            }
+            if (activePane) {
+                activePane.classList.remove('show', 'active');
+            }
+        }
+    });
+
+    // Initialize Select2 when filters tab is shown
+    $('#filters-tab').on('shown.bs.tab', function() {
+        // Delay to ensure tab is fully shown
+        setTimeout(() => {
+            initializeSelect2();
+        }, 100);
+    });
+}
+
 function initializeSelect2() {
+    // Destroy existing Select2 instances if they exist
+    try {
+        $('select[name="business_apps"]').select2('destroy');
+    } catch (e) {
+        // Select2 not initialized yet
+    }
+    try {
+        $('select[name="services"]').select2('destroy');
+    } catch (e) {
+        // Select2 not initialized yet
+    }
+
     // Initialize Business Applications selector
     $('select[name="business_apps"]').select2({
         placeholder: 'Select Business Applications...',
         allowClear: true,
         theme: 'bootstrap-5',
         width: '100%',
+        dropdownParent: $('#filters-pane'),
         templateResult: function(option) {
             if (!option.id) {
                 return option.text;
@@ -573,6 +654,7 @@ function initializeSelect2() {
         allowClear: true,
         theme: 'bootstrap-5',
         width: '100%',
+        dropdownParent: $('#filters-pane'),
         templateResult: function(option) {
             if (!option.id) {
                 return option.text;
