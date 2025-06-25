@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from business_application.api.views import (
     BusinessApplicationViewSet, TechnicalServiceViewSet, EventSourceViewSet,
     EventViewSet, MaintenanceViewSet, ChangeTypeViewSet, ChangeViewSet,
-    DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet
+    IncidentViewSet, DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet
 )
 
 router = DefaultRouter()
@@ -16,6 +16,7 @@ router.register(r'events', EventViewSet, basename='event')
 router.register(r'maintenance', MaintenanceViewSet, basename='maintenance')
 router.register(r'change-types', ChangeTypeViewSet, basename='changetype')
 router.register(r'changes', ChangeViewSet, basename='change')
+router.register(r'incidents', IncidentViewSet, basename='incident')
 
 # Complex endpoints for downstream application analysis
 router.register(r'clusters/downstream-applications', ClusterDownstreamAppsViewSet, basename='cluster-downstream-applications')

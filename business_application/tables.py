@@ -2,7 +2,7 @@ import django_tables2 as tables
 from netbox.tables import NetBoxTable
 from .models import (
     BusinessApplication, TechnicalService, EventSource, Event,
-    Maintenance, ChangeType, Change
+    Maintenance, ChangeType, Change, Incident
 )
 
 class BusinessApplicationTable(NetBoxTable):
@@ -108,3 +108,30 @@ class ChangeTable(NetBoxTable):
     class Meta(NetBoxTable.Meta):
         model = Change
         fields = ['description', 'type', 'created_at', 'obj']
+
+class IncidentTable(NetBoxTable):
+    title = tables.Column(linkify=True)
+    status = tables.TemplateColumn(
+        template_code="""
+        {% load business_app_filters %}
+        {{ record.status|incident_status_badge }}
+        """,
+        verbose_name="Status"
+    )
+    severity = tables.TemplateColumn(
+        template_code="""
+        {% load business_app_filters %}
+        {{ record.severity|incident_severity_badge }}
+        """,
+        verbose_name="Severity"
+    )
+    created_at = tables.DateTimeColumn()
+    resolved_at = tables.DateTimeColumn()
+    responders_count = tables.Column(verbose_name="Responders", accessor="responders.count")
+    affected_services_count = tables.Column(verbose_name="Affected Services", accessor="affected_services.count")
+    events_count = tables.Column(verbose_name="Events", accessor="events.count")
+    commander = tables.Column()
+
+    class Meta(NetBoxTable.Meta):
+        model = Incident
+        fields = ['title', 'status', 'severity', 'created_at', 'resolved_at', 'responders_count', 'affected_services_count', 'events_count', 'commander']

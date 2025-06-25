@@ -1,7 +1,7 @@
 from django import forms
 from .models import (
     BusinessApplication, TechnicalService, EventSource, Event,
-    Maintenance, ChangeType, Change
+    Maintenance, ChangeType, Change, Incident
 )
 
 class BusinessApplicationForm(forms.ModelForm):
@@ -105,3 +105,28 @@ class ChangeForm(forms.ModelForm):
             'content_type',
             'object_id'
         ]
+
+class IncidentForm(forms.ModelForm):
+    """
+    Form for creating and editing Incident objects.
+    """
+    class Meta:
+        model = Incident
+        fields = [
+            'title',
+            'description',
+            'status',
+            'severity',
+            'detected_at',
+            'resolved_at',
+            'responders',
+            'affected_services',
+            'events',
+            'reporter',
+            'commander'
+        ]
+        widgets = {
+            'detected_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+            'resolved_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+            'description': forms.Textarea(attrs={'rows': 4}),
+        }

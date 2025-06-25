@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from utilities.choices import ChoiceSet
+from django.conf import settings
 
 
 class BusinessApplication(NetBoxModel):
@@ -174,3 +175,79 @@ class Change(NetBoxModel):
 
     def __str__(self):
         return f"{self.description[:50]}..."
+
+
+class IncidentStatus(ChoiceSet):
+    NEW         = 'new'
+    INVESTIGATING = 'investigating'
+    IDENTIFIED  = 'identified'
+    MONITORING  = 'monitoring'
+    RESOLVED    = 'resolved'
+    CLOSED      = 'closed'
+    CHOICES = [
+        (NEW, 'New', 'red'),
+        (INVESTIGATING, 'Investigating', 'orange'),
+        (IDENTIFIED, 'Identified', 'yellow'),
+        (MONITORING, 'Monitoring', 'blue'),
+        (RESOLVED, 'Resolved', 'green'),
+        (CLOSED, 'Closed', 'gray'),
+    ]
+
+class IncidentSeverity(ChoiceSet):
+    CRITICAL = 'critical'
+    HIGH     = 'high'
+    MEDIUM   = 'medium'
+    LOW      = 'low'
+    CHOICES = [
+        (CRITICAL, 'Critical', 'red'),
+        (HIGH, 'High', 'orange'),
+        (MEDIUM, 'Medium', 'yellow'),
+        (LOW, 'Low', 'green'),
+    ]
+
+class Incident(NetBoxModel):
+    title           = models.CharField(max_length=255)
+    description     = models.TextField(blank=True)
+    status          = models.CharField(max_length=16, choices=IncidentStatus)
+    severity        = models.CharField(max_length=10, choices=IncidentSeverity)
+    created_at      = models.DateTimeField(auto_now_add=True)
+    updated_at      = models.DateTimeField(auto_now=True)
+    detected_at     = models.DateTimeField(null=True, blank=True)
+    resolved_at     = models.DateTimeField(null=True, blank=True)
+
+    # Responders - people who respond to the incident
+    responders      = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='incidents_responding',
+        blank=True,
+        help_text='Users responding to this incident'
+    )
+
+    # Affected services
+    affected_services = models.ManyToManyField(
+        TechnicalService,
+        related_name='incidents',
+        blank=True,
+        help_text='Technical services affected by this incident'
+    )
+
+    # Related events
+    events          = models.ManyToManyField(
+        Event,
+        related_name='incidents',
+        blank=True,
+        help_text='Events related to this incident'
+    )
+
+    # Contact information
+    reporter        = models.CharField(max_length=120, blank=True)
+    commander       = models.CharField(max_length=120, blank=True, help_text='Incident commander')
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:incident_detail', args=[self.pk])
+
+    def __str__(self):
+        return self.title

@@ -1,7 +1,7 @@
 from netbox.search import SearchIndex
 from .models import (
     BusinessApplication, TechnicalService, EventSource, Event,
-    Maintenance, ChangeType, Change
+    Maintenance, ChangeType, Change, Incident
 )
 
 class BusinessApplicationIndex(SearchIndex):
@@ -56,6 +56,17 @@ class ChangeIndex(SearchIndex):
         ('description', 100),
     )
 
+class IncidentIndex(SearchIndex):
+    model = Incident
+    fields = (
+        ('title', 100),
+        ('description', 200),
+        ('status', 300),
+        ('severity', 300),
+        ('reporter', 400),
+        ('commander', 400),
+    )
+
 indexes = [
     BusinessApplicationIndex,
     TechnicalServiceIndex,
@@ -64,4 +75,5 @@ indexes = [
     MaintenanceIndex,
     ChangeTypeIndex,
     ChangeIndex,
+    IncidentIndex,
 ]

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from business_application.models import (
     BusinessApplication, TechnicalService, EventSource, Event,
-    Maintenance, ChangeType, Change
+    Maintenance, ChangeType, Change, Incident
 )
 
 class BusinessApplicationSerializer(serializers.ModelSerializer):
@@ -148,6 +148,35 @@ class ChangeSerializer(serializers.ModelSerializer):
             'content_type',
             'content_type_name',
             'object_id',
+            'created',
+            'last_updated',
+        ]
+
+class IncidentSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Incident model.
+    """
+    responders_count = serializers.IntegerField(source='responders.count', read_only=True)
+    affected_services_count = serializers.IntegerField(source='affected_services.count', read_only=True)
+    events_count = serializers.IntegerField(source='events.count', read_only=True)
+
+    class Meta:
+        model = Incident
+        fields = [
+            'id',
+            'title',
+            'description',
+            'status',
+            'severity',
+            'created_at',
+            'updated_at',
+            'detected_at',
+            'resolved_at',
+            'responders_count',
+            'affected_services_count',
+            'events_count',
+            'reporter',
+            'commander',
             'created',
             'last_updated',
         ]

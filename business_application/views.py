@@ -8,19 +8,19 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import (
     BusinessApplication, TechnicalService, EventSource, Event,
-    Maintenance, ChangeType, Change
+    Maintenance, ChangeType, Change, Incident
 )
 from .forms import (
     BusinessApplicationForm, TechnicalServiceForm, EventSourceForm, EventForm,
-    MaintenanceForm, ChangeTypeForm, ChangeForm
+    MaintenanceForm, ChangeTypeForm, ChangeForm, IncidentForm
 )
 from .tables import (
     BusinessApplicationTable, TechnicalServiceTable, EventSourceTable, EventTable,
-    MaintenanceTable, ChangeTypeTable, ChangeTable
+    MaintenanceTable, ChangeTypeTable, ChangeTable, IncidentTable
 )
 from .filtersets import (
     BusinessApplicationFilter, TechnicalServiceFilter, EventSourceFilter, EventFilter,
-    MaintenanceFilter, ChangeTypeFilter, ChangeFilter
+    MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter
 )
 
 # BusinessApplication Views
@@ -214,6 +214,30 @@ class ChangeEditView(generic.ObjectEditView):
 class ChangeDeleteView(generic.ObjectDeleteView):
     queryset = Change.objects.all()
 
+# Incident Views
+class IncidentListView(generic.ObjectListView):
+    queryset = Incident.objects.all()
+    table = IncidentTable
+    filterset = IncidentFilter
+
+class IncidentChangeLogView(generic.ObjectChangeLogView):
+    queryset = Incident.objects.all()
+
+class IncidentDetailView(generic.ObjectView):
+    queryset = Incident.objects.all()
+    template_name = 'business_application/incident/incident.html'
+
+class IncidentCreateView(generic.ObjectEditView):
+    queryset = Incident.objects.all()
+    form = IncidentForm
+
+class IncidentEditView(generic.ObjectEditView):
+    queryset = Incident.objects.all()
+    form = IncidentForm
+
+class IncidentDeleteView(generic.ObjectDeleteView):
+    queryset = Incident.objects.all()
+
 # Calendar View
 class CalendarView(TemplateView):
     template_name = 'business_application/calendar.html'
@@ -221,8 +245,8 @@ class CalendarView(TemplateView):
     def get_context_data(self, **kwargs):
         def format_event_title(obj):
             title = ''
-            if isinstance(obj, Event):
-                title = obj.message
+            if isinstance(obj, Incident):
+                title = obj.title
             elif isinstance(obj, Maintenance):
                 title = obj.description
             elif isinstance(obj, Change):
@@ -236,7 +260,6 @@ class CalendarView(TemplateView):
         # Get filter parameters from request
         selected_apps = self.request.GET.getlist('business_apps')
         selected_services = self.request.GET.getlist('services')
-        selected_devices = self.request.GET.getlist('devices')
         include_dependents = self.request.GET.get('include_dependents', False)
 
         # Date range - default to current month
@@ -253,67 +276,71 @@ class CalendarView(TemplateView):
         if self.request.GET.get('end_date'):
             end_date = datetime.strptime(self.request.GET.get('end_date'), '%Y-%m-%d')
 
-        # Build filters for related objects
-        events_filter = Q()
+        # Build filters for incidents based on affected services
+        incidents_filter = Q()
         maintenance_filter = Q()
         changes_filter = Q()
 
         if selected_apps:
-            # Filter events for devices/VMs related to selected business apps
+            # Filter incidents for services related to selected business apps
+            app_services = TechnicalService.objects.filter(
+                business_apps__id__in=selected_apps
+            ).values_list('id', flat=True)
+            incidents_filter |= Q(affected_services__id__in=app_services)
+
+            # Extend selected services with app services
+            selected_services = list(set(selected_services) | set(app_services))
+
+            # Filter maintenance/changes for devices/VMs related to selected business apps
             app_devices = BusinessApplication.objects.filter(
                 id__in=selected_apps
             ).values_list('devices', flat=True)
             app_vms = BusinessApplication.objects.filter(
                 id__in=selected_apps
             ).values_list('virtual_machines', flat=True)
-            events_filter |= Q(content_type__model='device', object_id__in=app_devices)
-            events_filter |= Q(content_type__model='virtualmachine', object_id__in=app_vms)
+            maintenance_filter |= Q(content_type__model='businessapplication', object_id__in=selected_apps)
+            changes_filter |= Q(content_type__model='businessapplication', object_id__in=selected_apps)
             maintenance_filter |= Q(content_type__model='device', object_id__in=app_devices)
             maintenance_filter |= Q(content_type__model='virtualmachine', object_id__in=app_vms)
             changes_filter |= Q(content_type__model='device', object_id__in=app_devices)
             changes_filter |= Q(content_type__model='virtualmachine', object_id__in=app_vms)
 
         if selected_services:
-            # Filter for technical services and their related objects
+            if include_dependents:
+                previous = []
+                current = set(selected_services)
+
+                while previous != current:
+                    previous = current
+                    current = previous | set(TechnicalService.objects.filter(
+                        id__in=current
+                    ).values_list('depends_on', flat=True))
+
+                selected_services = list(current)
+
+            # Filter incidents for selected technical services
+            incidents_filter |= Q(affected_services__id__in=selected_services)
+
+            # Filter maintenance/changes for technical services and their related objects
             service_devices = TechnicalService.objects.filter(
                 id__in=selected_services
             ).values_list('devices', flat=True)
             service_vms = TechnicalService.objects.filter(
                 id__in=selected_services
             ).values_list('vms', flat=True)
-            events_filter |= Q(content_type__model='device', object_id__in=service_devices)
-            events_filter |= Q(content_type__model='virtualmachine', object_id__in=service_vms)
             maintenance_filter |= Q(content_type__model='device', object_id__in=service_devices)
             maintenance_filter |= Q(content_type__model='virtualmachine', object_id__in=service_vms)
+            maintenance_filter |= Q(content_type__model='technicalservice', object_id__in=selected_services)
             changes_filter |= Q(content_type__model='device', object_id__in=service_devices)
             changes_filter |= Q(content_type__model='virtualmachine', object_id__in=service_vms)
+            changes_filter |= Q(content_type__model='technicalservice', object_id__in=selected_services)
 
-            # Include dependent services if requested
-            if include_dependents:
-                dependent_services = TechnicalService.objects.filter(
-                    depends_on__id__in=selected_services
-                )
-                for service in dependent_services:
-                    dep_devices = service.devices.values_list('id', flat=True)
-                    dep_vms = service.vms.values_list('id', flat=True)
-                    events_filter |= Q(content_type__model='device', object_id__in=dep_devices)
-                    events_filter |= Q(content_type__model='virtualmachine', object_id__in=dep_vms)
-                    maintenance_filter |= Q(content_type__model='device', object_id__in=dep_devices)
-                    maintenance_filter |= Q(content_type__model='virtualmachine', object_id__in=dep_vms)
-                    changes_filter |= Q(content_type__model='device', object_id__in=dep_devices)
-                    changes_filter |= Q(content_type__model='virtualmachine', object_id__in=dep_vms)
 
-        if selected_devices:
-            events_filter |= Q(content_type__model='device', object_id__in=selected_devices)
-            maintenance_filter |= Q(content_type__model='device', object_id__in=selected_devices)
-            changes_filter |= Q(content_type__model='device', object_id__in=selected_devices)
-
-        # Get filtered data within date range
-        events = Event.objects.filter(events_filter).filter(
-            last_seen_at__date__range=(start_date.date(), end_date.date())
-        ).order_by('last_seen_at') if events_filter else Event.objects.filter(
-            last_seen_at__date__range=(start_date.date(), end_date.date())
-        ).order_by('last_seen_at')
+        incidents = Incident.objects.filter(incidents_filter).filter(
+            created_at__date__range=(start_date.date(), end_date.date())
+        ).order_by('created_at') if incidents_filter else Incident.objects.filter(
+            created_at__date__range=(start_date.date(), end_date.date())
+        ).order_by('created_at')
 
         maintenances = Maintenance.objects.filter(maintenance_filter).filter(
             Q(planned_start__date__lt=end_date.date(), planned_end__date__gte=start_date.date())
@@ -330,19 +357,21 @@ class CalendarView(TemplateView):
         # Prepare data for calendar rendering
         calendar_events = []
 
-        # Add events to calendar
-        for event in events:
+        # Add incidents to calendar
+        for incident in incidents:
             calendar_events.append({
-                'title': format_event_title(event),
-                'start_ts': int(event.last_seen_at.timestamp() * 1000),
-                'end_ts': int(event.last_seen_at.timestamp() * 1000),
-                'date': event.last_seen_at.strftime('%Y-%m-%d'),
-                'time': event.last_seen_at.strftime('%H:%M'),
-                'type': 'event',
-                'criticality': event.criticallity,
-                'status': event.status,
-                'url': event.get_absolute_url(),
-                'object': event
+                'title': format_event_title(incident),
+                'start_ts': int(incident.created_at.timestamp() * 1000),
+                'end_ts': int(incident.resolved_at.timestamp() * 1000) if incident.resolved_at else int(incident.created_at.timestamp() * 1000),
+                'date': incident.created_at.strftime('%Y-%m-%d'),
+                'time': incident.created_at.strftime('%H:%M'),
+                'end_date': incident.resolved_at.strftime('%Y-%m-%d') if incident.resolved_at else None,
+                'end_time': incident.resolved_at.strftime('%H:%M') if incident.resolved_at else None,
+                'type': 'incident',
+                'severity': incident.severity,
+                'status': incident.status,
+                'url': incident.get_absolute_url(),
+                'object': incident
             })
 
         # Add maintenances to calendar
@@ -386,7 +415,6 @@ class CalendarView(TemplateView):
             'technical_services': TechnicalService.objects.all(),
             'selected_apps': selected_apps,
             'selected_services': selected_services,
-            'selected_devices': selected_devices,
             'include_dependents': include_dependents,
         })
 

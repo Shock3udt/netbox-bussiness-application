@@ -2,7 +2,7 @@ from django.db.models import Q
 from netbox.filtersets import NetBoxModelFilterSet
 from .models import (
     BusinessApplication, TechnicalService, EventSource, Event,
-    Maintenance, ChangeType, Change
+    Maintenance, ChangeType, Change, Incident
 )
 
 class BusinessApplicationFilter(NetBoxModelFilterSet):
@@ -124,3 +124,23 @@ class ChangeFilter(NetBoxModelFilterSet):
     class Meta:
         model = Change
         fields = ['type']
+
+class IncidentFilter(NetBoxModelFilterSet):
+    """
+    Filters for the Incident model.
+    """
+
+    def search(self, queryset, name, value):
+        if not value:
+            return queryset
+        qs_filter = (
+            Q(title__icontains=value)
+            | Q(description__icontains=value)
+            | Q(reporter__icontains=value)
+            | Q(commander__icontains=value)
+        )
+        return queryset.filter(qs_filter)
+
+    class Meta:
+        model = Incident
+        fields = ['status', 'severity', 'responders', 'affected_services', 'reporter', 'commander']

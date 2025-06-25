@@ -16,6 +16,10 @@ _business_menu_items = (
 
 _operations_menu_items = (
     PluginMenuItem(
+        link='plugins:business_application:incident_list',
+        link_text='Incidents',
+    ),
+    PluginMenuItem(
         link='plugins:business_application:event_list',
         link_text='Events',
     ),

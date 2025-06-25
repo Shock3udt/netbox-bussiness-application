@@ -60,6 +60,14 @@ urlpatterns = [
     path('change/<int:pk>/delete/', views.ChangeDeleteView.as_view(), name='change_delete'),
     path('change/<int:pk>/', include(get_model_urls('business_application', 'change'))),
 
+    # Incident URLs
+    path('incident/', views.IncidentListView.as_view(), name='incident_list'),
+    path('incident/<int:pk>/', views.IncidentDetailView.as_view(), name='incident_detail'),
+    path('incident/add/', views.IncidentCreateView.as_view(), name='incident_add'),
+    path('incident/<int:pk>/edit/', views.IncidentEditView.as_view(), name='incident_edit'),
+    path('incident/<int:pk>/delete/', views.IncidentDeleteView.as_view(), name='incident_delete'),
+    path('incident/<int:pk>/', include(get_model_urls('business_application', 'incident'))),
+
     # Calendar URL
     path('calendar/', views.CalendarView.as_view(), name='calendar_view'),
 ]

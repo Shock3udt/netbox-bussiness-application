@@ -132,7 +132,7 @@
                     <div class="col-md-4">
                         <div class="mb-2">
                             <span class="badge bg-danger me-2 text-light"><i class="mdi mdi-alert-circle"></i></span>
-                            <small>Events</small>
+                            <small>Incidents</small>
                         </div>
                     </div>
                     <div class="col-md-4">
@@ -167,7 +167,7 @@
                             <i class="mdi mdi-calendar-month"></i>
                             <span id="calendar-month-year">{{ start_date|date:"F Y" }}</span>
                         </h5>
-                        <span class="badge bg-secondary text-light">{{ calendar_events|length }} events</span>
+                        <span class="badge bg-secondary text-light">{{ calendar_events|length }} items</span>
                     </div>
 
                     <!-- Right side: Navigation controls -->
@@ -207,7 +207,7 @@
                     <div class="mt-4">
                         <h6>
                             <i class="mdi mdi-format-list-bulleted"></i>
-                            Events List
+                            Calendar Items
                         </h6>
                         <div class="table-responsive">
                             <table class="table table-sm table-striped">
@@ -216,7 +216,7 @@
                                         <th>Date & Time</th>
                                         <th>Type</th>
                                         <th>Title</th>
-                                        <th>Status/Criticality</th>
+                                        <th>Status/Severity</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -233,9 +233,9 @@
                                             {% endif %}
                                         </td>
                                         <td>
-                                            {% if event.type == 'event' %}
+                                            {% if event.type == 'incident' %}
                                                 <span class="badge bg-danger text-light">
-                                                    <i class="mdi mdi-alert-circle"></i> Event
+                                                    <i class="mdi mdi-alert-circle"></i> Incident
                                                 </span>
                                             {% elif event.type == 'maintenance' %}
                                                 <span class="badge bg-warning text-dark">
@@ -253,9 +253,9 @@
                                             </a>
                                         </td>
                                         <td>
-                                            {% if event.type == 'event' %}
-                                                {{ event.status|event_status_badge }}
-                                                {{ event.criticality|event_criticality_badge }}
+                                            {% if event.type == 'incident' %}
+                                                {{ event.status|incident_status_badge }}
+                                                {{ event.severity|incident_severity_badge }}
                                             {% elif event.type == 'maintenance' %}
                                                 {{ event.status|maintenance_status_badge }}
                                             {% elif event.type == 'change' %}
@@ -276,9 +276,9 @@
                 {% else %}
                     <div class="text-center py-5">
                         <i class="mdi mdi-calendar-blank display-1 text-muted"></i>
-                        <h4 class="text-muted">No events found</h4>
+                        <h4 class="text-muted">No items found</h4>
                         <p class="text-muted">
-                            No events, changes, or maintenances found for the selected filters and date range.
+                            No incidents, changes, or maintenances found for the selected filters and date range.
                         </p>
                     </div>
                 {% endif %}
@@ -360,7 +360,7 @@
     text-decoration: none;
 }
 
-.calendar-event.event {
+.calendar-event.incident {
     background-color: #dc3545;
     color: #eee;
 }
@@ -391,7 +391,7 @@
             {% if event.end_time %},"end_time": "{{ event.end_time }}"{% endif %}
             {% if event.start_ts %},"start_ts": {{ event.start_ts }}{% endif %}
             {% if event.end_ts %},"end_ts": {{ event.end_ts }}{% endif %}
-            {% if event.criticality %},"criticality": "{{ event.criticality }}"{% endif %}
+            {% if event.severity %},"severity": "{{ event.severity }}"{% endif %}
             {% if event.status %},"status": "{{ event.status }}"{% endif %}
             {% if event.change_type %},"change_type": "{{ event.change_type|escapejs }}"{% endif %}
         }{% if not forloop.last %},{% endif %}

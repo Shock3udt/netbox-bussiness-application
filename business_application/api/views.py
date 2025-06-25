@@ -2,11 +2,12 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from business_application.models import (
     BusinessApplication, TechnicalService, EventSource, Event,
-    Maintenance, ChangeType, Change
+    Maintenance, ChangeType, Change, Incident
 )
 from business_application.api.serializers import (
     BusinessApplicationSerializer, TechnicalServiceSerializer, EventSourceSerializer,
-    EventSerializer, MaintenanceSerializer, ChangeTypeSerializer, ChangeSerializer
+    EventSerializer, MaintenanceSerializer, ChangeTypeSerializer, ChangeSerializer,
+    IncidentSerializer
 )
 from rest_framework.permissions import IsAuthenticated
 from dcim.models import Device
@@ -166,6 +167,38 @@ class ChangeViewSet(ModelViewSet):
             queryset = queryset.filter(type__name__icontains=change_type)
         if description:
             queryset = queryset.filter(description__icontains=description)
+
+        return queryset.order_by('-created_at')
+
+class IncidentViewSet(ModelViewSet):
+    """
+    API endpoint for managing Incident objects.
+    """
+    queryset = Incident.objects.prefetch_related('responders', 'affected_services', 'events').all()
+    serializer_class = IncidentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter incidents by various parameters.
+        """
+        queryset = super().get_queryset()
+        status = self.request.query_params.get('status')
+        severity = self.request.query_params.get('severity')
+        title = self.request.query_params.get('title')
+        reporter = self.request.query_params.get('reporter')
+        commander = self.request.query_params.get('commander')
+
+        if status:
+            queryset = queryset.filter(status=status)
+        if severity:
+            queryset = queryset.filter(severity=severity)
+        if title:
+            queryset = queryset.filter(title__icontains=title)
+        if reporter:
+            queryset = queryset.filter(reporter__icontains=reporter)
+        if commander:
+            queryset = queryset.filter(commander__icontains=commander)
 
         return queryset.order_by('-created_at')
 

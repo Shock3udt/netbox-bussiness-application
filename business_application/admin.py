@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     BusinessApplication, TechnicalService, EventSource, Event,
-    Maintenance, ChangeType, Change
+    Maintenance, ChangeType, Change, Incident
 )
 
 @admin.register(BusinessApplication)
@@ -48,3 +48,12 @@ class ChangeAdmin(admin.ModelAdmin):
     list_filter = ('type', 'created_at')
     readonly_fields = ('created_at',)
     date_hierarchy = 'created_at'
+
+@admin.register(Incident)
+class IncidentAdmin(admin.ModelAdmin):
+    list_display = ('title', 'status', 'severity', 'created_at', 'resolved_at', 'commander')
+    search_fields = ('title', 'description', 'reporter', 'commander')
+    list_filter = ('status', 'severity', 'created_at', 'resolved_at')
+    readonly_fields = ('created_at', 'updated_at')
+    date_hierarchy = 'created_at'
+    filter_horizontal = ('responders', 'affected_services', 'events')
