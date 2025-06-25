@@ -9,14 +9,15 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('business_application', '0004_incident'),
-        ('extras', '0123_journalentry_kind_default'),
+        ('extras', '__first__'),
+        ('taggit', '__first__'),
     ]
 
     operations = [
         migrations.AddField(
             model_name='incident',
             name='tags',
-            field=taggit.managers.TaggableManager(through='extras.TaggedItem', to='extras.Tag'),
+            field=taggit.managers.TaggableManager(through='extras.TaggedItem', to='extras.Tag', blank=True),
         ),
         migrations.AlterField(
             model_name='incident',
