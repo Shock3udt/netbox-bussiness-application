@@ -1,0 +1,400 @@
+{% extends 'generic/object.html' %}
+{% load static %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="mdi mdi-sitemap"></i> Service Dependencies</h5>
+            </div>
+            <div class="card-body">
+                {% if mermaid_graph %}
+                    <div class="dependencies-graph-container mb-4">
+                        <div class="mermaid">{{ mermaid_graph }}</div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card border">
+                                <div class="card-header py-2">
+                                    <h6 class="card-title mb-0"><i class="mdi mdi-information-outline"></i> Legend</h6>
+                                </div>
+                                <div class="card-body py-2">
+                                    <div class="legend-item mb-2">
+                                        <span class="legend-indicator current"></span>
+                                        <small>Current Service</small>
+                                    </div>
+                                    <div class="legend-item mb-2">
+                                        <span class="legend-indicator dependency"></span>
+                                        <small>Related Services</small>
+                                    </div>
+                                    <div class="legend-item mb-2">
+                                        <span class="legend-indicator truncated"></span>
+                                        <small>Circular/Max Depth</small>
+                                    </div>
+                                    <hr class="my-2">
+                                    <div class="text-muted">
+                                        <small>
+                                            <i class="mdi mdi-arrow-right"></i>
+                                            Arrows show dependency direction
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border">
+                                <div class="card-header py-2">
+                                    <h6 class="card-title mb-0"><i class="mdi mdi-magnify"></i> Graph Controls</h6>
+                                </div>
+                                <div class="card-body py-2">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button" class="btn btn-outline-primary" onclick="zoomGraph('in')" title="Zoom In">
+                                            <i class="mdi mdi-magnify-plus"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary" onclick="resetZoom()" title="Reset Zoom">
+                                            <i class="mdi mdi-magnify"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary" onclick="zoomGraph('out')" title="Zoom Out">
+                                            <i class="mdi mdi-magnify-minus"></i>
+                                        </button>
+                                    </div>
+                                    <div class="mt-2">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="reloadGraph()" title="Reload Graph">
+                                            <i class="mdi mdi-refresh"></i> Refresh
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info d-flex align-items-center">
+                        <i class="mdi mdi-information-outline me-2"></i>
+                        <span>No dependencies found for this service.</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title"><i class="mdi mdi-arrow-down text-info"></i> Dependencies</h6>
+                <div class="card-subtitle text-muted">Services this service depends on</div>
+            </div>
+            <div class="card-body">
+                {% if direct_dependencies %}
+                    <div class="list-group list-group-flush">
+                        {% for service in direct_dependencies %}
+                            <a href="{{ service.get_absolute_url }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="mdi mdi-cog text-muted me-2"></i>
+                                    <strong>{{ service.name }}</strong>
+                                </div>
+                                <i class="mdi mdi-chevron-right text-primary"></i>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-muted text-center py-3">
+                        <i class="mdi mdi-information-outline"></i>
+                        <div class="mt-1">This service has no dependencies</div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title"><i class="mdi mdi-arrow-up text-success"></i> Dependents</h6>
+                <div class="card-subtitle text-muted">Services that depend on this service</div>
+            </div>
+            <div class="card-body">
+                {% if direct_dependents %}
+                    <div class="list-group list-group-flush">
+                        {% for service in direct_dependents %}
+                            <a href="{{ service.get_absolute_url }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="mdi mdi-cog text-muted me-2"></i>
+                                    <strong>{{ service.name }}</strong>
+                                </div>
+                                <i class="mdi mdi-chevron-right text-success"></i>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-muted text-center py-3">
+                        <i class="mdi mdi-information-outline"></i>
+                        <div class="mt-1">No services depend on this service</div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.dependencies-graph-container {
+    min-height: 450px;
+    background: var(--bs-body-bg, #ffffff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: var(--bs-border-radius, 0.375rem);
+    padding: 1.5rem;
+    overflow: auto;
+    position: relative;
+}
+
+.mermaid {
+    text-align: center;
+    min-height: 400px;
+    background: var(--bs-body-bg, #ffffff);
+}
+
+/* Custom styles for Mermaid nodes with rounded corners */
+.mermaid .node rect {
+    rx: 8px !important;
+    ry: 8px !important;
+}
+
+.mermaid .node circle {
+    r: 25px !important;
+}
+
+.mermaid .node polygon {
+    rx: 6px !important;
+    ry: 6px !important;
+}
+
+/* Enhanced node styling */
+.mermaid .node {
+    filter: drop-shadow(0 2px 4px rgba(255,255,255, 0.15));
+    transition: all 0.2s ease;
+}
+
+.mermaid .node:hover {
+    filter: drop-shadow(0 4px 8px rgba(255,255,255, 0.2));
+    transform: translateY(-1px);
+}
+
+/* Edge styling */
+.mermaid .edgePath path {
+    stroke-width: 2px;
+    fill: none;
+}
+
+.mermaid .edgeLabel {
+    display: none;
+    background-color: var(--bs-body-bg, #ffffff);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+}
+
+/* Arrowhead styling */
+.mermaid .arrowheadPath {
+    fill: #59a1df;
+    stroke: #59a1df;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+}
+
+.legend-indicator {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 6px;
+    margin-right: 8px;
+    border: 2px solid transparent;
+    flex-shrink: 0;
+}
+
+.legend-indicator.current {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.legend-indicator.dependency {
+    background-color: #6c757d;
+    border-color: #6c757d;
+}
+
+.legend-indicator.truncated {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    border-style: dashed;
+}
+
+/* NetBox-style card enhancements */
+.card-subtitle {
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+/* Enhanced list group styling */
+.list-group-item-action:hover {
+    background-color: var(--bs-gray-100, #f8f9fa);
+}
+
+.list-group-item strong {
+    color: var(--bs-body-color, #212529);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .dependencies-graph-container {
+        padding: 1rem;
+        min-height: 300px;
+    }
+
+    .btn-group {
+        flex-wrap: wrap;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .dependencies-graph-container {
+        background: var(--bs-dark, #212529);
+    }
+
+    .mermaid {
+        background: var(--bs-dark, #212529);
+    }
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+let currentZoom = 1;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // NetBox-optimized Mermaid initialization
+    mermaid.initialize({
+        startOnLoad: true,
+        securityLevel: 'loose',
+        theme: 'base',
+        themeVariables: {
+            // NetBox color scheme
+            primaryColor: '#ffffff',
+            primaryTextColor: '#212529',
+            primaryBorderColor: '#0d6efd',
+            lineColor: '#6c757d',
+            background: 'var(--bs-body-bg, #ffffff)',
+            mainBkg: '#ffffff',
+            secondaryColor: '#f8f9fa',
+            tertiaryColor: '#e9ecef',
+
+            // Node specific colors
+            nodeBorder: '#dee2e6',
+            nodeTextColor: '#212529',
+
+            // Current service styling
+            cScale0: '#e3f2fd',
+            cScale1: '#bbdefb',
+            cScale2: '#90caf9',
+
+            // Edge styling
+            edgeLabelBackground: '#ffffff',
+            defaultLinkColor: '#6c757d',
+
+            // Font settings
+            fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            fontSize: '14px'
+        },
+        flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+            curve: 'basis',
+            padding: 15,
+            nodeSpacing: 50,
+            rankSpacing: 60
+        }
+    });
+
+    // Add node interactions after render
+    setTimeout(function() {
+        addNodeInteractions();
+    }, 1500);
+});
+
+function addNodeInteractions() {
+    const nodes = document.querySelectorAll('.mermaid .node');
+    nodes.forEach(function(node) {
+        node.style.cursor = 'pointer';
+        node.style.transition = 'all 0.2s ease';
+
+        node.addEventListener('mouseenter', function() {
+            this.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.15)) brightness(1.05)';
+            this.style.transform = 'translateY(-1px) scale(1.02)';
+        });
+
+        node.addEventListener('mouseleave', function() {
+            this.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))';
+            this.style.transform = 'translateY(0) scale(1)';
+        });
+    });
+}
+
+function zoomGraph(direction) {
+    const mermaidElement = document.querySelector('.mermaid');
+
+    if (direction === 'in') {
+        currentZoom = Math.min(currentZoom * 1.2, 3);
+    } else if (direction === 'out') {
+        currentZoom = Math.max(currentZoom * 0.8, 0.3);
+    }
+
+    mermaidElement.style.transform = `scale(${currentZoom})`;
+    mermaidElement.style.transformOrigin = 'center center';
+    mermaidElement.style.transition = 'transform 0.2s ease';
+}
+
+function resetZoom() {
+    currentZoom = 1;
+    const mermaidElement = document.querySelector('.mermaid');
+    mermaidElement.style.transform = 'scale(1)';
+    mermaidElement.style.transition = 'transform 0.2s ease';
+}
+
+function reloadGraph() {
+    const btn = event.target.closest('button');
+    const originalContent = btn.innerHTML;
+
+    btn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+    btn.disabled = true;
+
+    // Re-initialize mermaid
+    mermaid.init();
+
+    setTimeout(() => {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+        addNodeInteractions();
+    }, 1000);
+}
+
+// Debug function to check if mermaid is loaded
+window.checkMermaid = function() {
+    console.log('Mermaid object:', typeof mermaid);
+    console.log('Mermaid version:', mermaid.version || 'unknown');
+    const mermaidElements = document.querySelectorAll('.mermaid');
+    console.log('Mermaid elements found:', mermaidElements.length);
+    mermaidElements.forEach((el, index) => {
+        console.log(`Element ${index}:`, el.innerHTML.substring(0, 100) + '...');
+    });
+};
+
+// Call debug function
+setTimeout(checkMermaid, 2000);
+</script>
+{% endblock %}

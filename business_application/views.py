@@ -1,4 +1,3 @@
-from re import T
 from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
 from django.shortcuts import render
@@ -76,6 +75,164 @@ class TechnicalServiceOperationsView(generic.ObjectView):
             context={
                 'object': obj,
                 'tab': self.tab,
+            }
+        )
+
+@register_model_view(TechnicalService, name='dependencies', path='dependencies')
+class TechnicalServiceDependenciesView(generic.ObjectView):
+    queryset = TechnicalService.objects.all()
+    template_name = 'business_application/technicalservice/dependencies.html'
+
+    tab = ViewTab(
+        label='Dependencies',
+        badge=lambda obj: obj.depends_on.count() + obj.dependent_services.count(),
+        permission='business_application.view_technicalservice',
+        weight=200
+    )
+
+    def get_dependency_graph(self, service, visited_services=None, depth=0, max_depth=5):
+        """
+        Recursively build dependency graph preventing circular dependencies
+        """
+        if visited_services is None:
+            visited_services = set()
+
+        if service.id in visited_services or depth > max_depth:
+            return None
+
+        visited_services.add(service.id)
+
+        # Get direct dependencies and dependents
+        dependencies = service.depends_on.all()
+        dependents = service.dependent_services.all()
+
+        node = {
+            'id': service.id,
+            'name': service.name,
+            'url': service.get_absolute_url(),
+            'is_current': depth == 0,
+            'dependencies': [],
+            'dependents': []
+        }
+
+        # Recursively get dependencies (services this one depends on)
+        for dep in dependencies:
+            if dep.id not in visited_services:
+                dep_node = self.get_dependency_graph(dep, visited_services.copy(), depth + 1, max_depth)
+                if dep_node:
+                    node['dependencies'].append(dep_node)
+                else:
+                    # Add simplified node for circular or max depth reached
+                    node['dependencies'].append({
+                        'id': dep.id,
+                        'name': dep.name,
+                        'url': dep.get_absolute_url(),
+                        'is_current': False,
+                        'dependencies': [],
+                        'dependents': [],
+                        'truncated': True
+                    })
+
+        # Recursively get dependents (services that depend on this one)
+        for dep in dependents:
+            if dep.id not in visited_services:
+                dep_node = self.get_dependency_graph(dep, visited_services.copy(), depth + 1, max_depth)
+                if dep_node:
+                    node['dependents'].append(dep_node)
+                else:
+                    # Add simplified node for circular or max depth reached
+                    node['dependents'].append({
+                        'id': dep.id,
+                        'name': dep.name,
+                        'url': dep.get_absolute_url(),
+                        'is_current': False,
+                        'dependencies': [],
+                        'dependents': [],
+                        'truncated': True
+                    })
+
+        return node
+
+    def generate_mermaid_graph(self, graph_data):
+        """
+        Generate Mermaid graph syntax from dependency data with NetBox styling
+        """
+        mermaid_lines = ['graph TD']
+        edges = []
+        nodes = {}
+        click_events = []
+
+        def process_node(node, prefix=""):
+            node_id = f"n{node['id']}"
+            node_label = node['name'].replace('"', '\\"')
+
+            # Style current service differently
+            if node['is_current']:
+                nodes[node_id] = f'{node_id}["{node_label}"]:::current'
+            elif node.get('truncated'):
+                nodes[node_id] = f'{node_id}["{node_label}..."]:::truncated'
+            else:
+                nodes[node_id] = f'{node_id}["{node_label}"]:::dependency'
+
+            # Add click event for navigation
+            click_events.append(f'click {node_id} href "{node["url"]}" _blank')
+
+            # Process dependencies (arrows FROM dependencies TO this node)
+            for dep in node['dependencies']:
+                dep_id = f"n{dep['id']}"
+                process_node(dep, prefix + "  ")
+                edges.append(f'{dep_id} --> {node_id}')
+
+            # Process dependents (arrows FROM this node TO dependents)
+            for dep in node['dependents']:
+                dep_id = f"n{dep['id']}"
+                process_node(dep, prefix + "  ")
+                edges.append(f'{node_id} --> {dep_id}')
+
+        process_node(graph_data)
+
+        # Add nodes to mermaid
+        for node_def in nodes.values():
+            mermaid_lines.append(f'    {node_def}')
+
+        # Add edges to mermaid
+        for edge in set(edges):  # Remove duplicates
+            mermaid_lines.append(f'    {edge}')
+
+        # Add click events
+        for click_event in click_events:
+            mermaid_lines.append(f'    {click_event}')
+
+        # Add NetBox-compatible styling classes
+        mermaid_lines.extend([
+            '    classDef current fill:#e3f2fd,stroke:#0d6efd,stroke-width:3px,color:#0d6efd',
+            '    classDef dependency fill:#ffffff,stroke:#dee2e6,stroke-width:2px,color:#212529',
+            '    classDef truncated fill:#fff3e0,stroke:#ffc107,stroke-width:2px,stroke-dasharray: 5 5,color:#8a6914'
+        ])
+
+        return '\n'.join(mermaid_lines)
+
+    def get(self, request, pk):
+        obj = self.get_object(pk=pk)
+
+        # Build dependency graph
+        graph_data = self.get_dependency_graph(obj)
+        mermaid_graph = self.generate_mermaid_graph(graph_data) if graph_data else None
+
+        # Get direct relationships for summary
+        direct_dependencies = obj.depends_on.all()
+        direct_dependents = obj.dependent_services.all()
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'graph_data': graph_data,
+                'mermaid_graph': mermaid_graph,
+                'direct_dependencies': direct_dependencies,
+                'direct_dependents': direct_dependents,
             }
         )
 
