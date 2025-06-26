@@ -94,7 +94,7 @@
                             <a href="{{ service.get_absolute_url }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                                 <div>
                                     <i class="mdi mdi-cog text-muted me-2"></i>
-                                    <strong>{{ service.name }}</strong>
+                                    <strong class="text-light">{{ service.name }}</strong>
                                 </div>
                                 <i class="mdi mdi-chevron-right text-primary"></i>
                             </a>
@@ -123,7 +123,7 @@
                             <a href="{{ service.get_absolute_url }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                                 <div>
                                     <i class="mdi mdi-cog text-muted me-2"></i>
-                                    <strong>{{ service.name }}</strong>
+                                    <strong class="text-light">{{ service.name }}</strong>
                                 </div>
                                 <i class="mdi mdi-chevron-right text-success"></i>
                             </a>
@@ -243,10 +243,6 @@
 /* Enhanced list group styling */
 .list-group-item-action:hover {
     background-color: var(--bs-gray-100, #f8f9fa);
-}
-
-.list-group-item strong {
-    color: var(--bs-body-color, #212529);
 }
 
 /* Responsive adjustments */

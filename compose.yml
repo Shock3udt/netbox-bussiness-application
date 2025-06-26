@@ -16,7 +16,7 @@ services:
     # … other options you already have …
     entrypoint: ""
     command:
-      - python
+      - /opt/netbox/venv/bin/python
       - /opt/netbox/netbox/manage.py
       - makemigrations
       - business_application
