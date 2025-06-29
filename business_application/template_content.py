@@ -31,7 +31,7 @@ class AppCodeExtension(PluginTemplateExtension):
     def x_page(self):
         obj = self.context['object']
         return self.render(
-            'business_application/extend.html',
+            'business_application/businessapplication/device_extend.html',
             extra_context={
                 'related_appcodes': self._get_related(obj),
                 'downstream_appcodes': self._get_downstream(obj),
@@ -84,9 +84,8 @@ class ClusterAppCodeExtension(AppCodeExtension):
 
 
         return self.render(
-            'business_application/extend.html',
+            'business_application/businessapplication/cluster_extend.html',
             extra_context={
-                'related_appcodes': BusinessApplicationTable(list(related_apps_via_vm)),
                 'downstream_appcodes': BusinessApplicationTable(list(related_apps_via_vm)),
             }
         )

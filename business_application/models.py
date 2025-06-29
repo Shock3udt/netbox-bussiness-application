@@ -1,8 +1,13 @@
 from django.db import models
 from netbox.models import NetBoxModel
-from virtualization.models import VirtualMachine
+from virtualization.models import VirtualMachine, Cluster
 from dcim.models import Device
 from django.urls import reverse
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
+from utilities.choices import ChoiceSet
+from django.conf import settings
+
 
 class BusinessApplication(NetBoxModel):
     """
@@ -36,3 +41,213 @@ class BusinessApplication(NetBoxModel):
 
     def __str__(self):
         return self.appcode
+
+
+class TechnicalService(NetBoxModel):
+    parent           = models.ForeignKey('self', null=True, blank=True,
+                                         related_name='children',
+                                         on_delete=models.SET_NULL)
+    name             = models.CharField(max_length=240, unique=True)
+    depends_on       = models.ManyToManyField('self',
+                                              related_name='dependent_services',
+                                              blank=True,
+                                              symmetrical=False,
+                                              help_text='Services this service depends on')
+    business_apps    = models.ManyToManyField(BusinessApplication,
+                                              related_name='technical_services',
+                                              blank=True)
+    vms              = models.ManyToManyField(VirtualMachine,
+                                              related_name='technical_services',
+                                              blank=True)
+    devices          = models.ManyToManyField(Device,
+                                              related_name='technical_services',
+                                              blank=True)
+    clusters         = models.ManyToManyField(Cluster,
+                                              related_name='technical_services',
+                                              blank=True)
+    class Meta:
+        ordering = ['name']
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:technicalservice_detail', args=[self.pk])
+
+    def __str__(self):
+        return self.name
+
+class EventStatus(ChoiceSet):
+    TRIGGERED = 'triggered'
+    OK        = 'ok'
+    SUPPRESSED= 'suppressed'
+    CHOICES = [
+        (TRIGGERED, 'Triggered', 'red'),
+        (OK, 'OK', 'green'),
+        (SUPPRESSED, 'Suppressed', 'gray'),
+    ]
+
+class EventCrit(ChoiceSet):
+    CRITICAL = 'critical'
+    WARNING  = 'warning'
+    INFO     = 'info'
+    CHOICES = [
+        (CRITICAL, 'Critical', 'red'),
+        (WARNING, 'Warning', 'orange'),
+        (INFO, 'Info', 'blue'),
+    ]
+
+class EventSource(NetBoxModel):        # reference catalog
+    name = models.CharField(max_length=64, unique=True)
+    description = models.TextField(blank=True)
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:eventsource_detail', args=[self.pk])
+
+    def __str__(self):
+        return self.name
+
+class Event(NetBoxModel):
+    created_at    = models.DateTimeField(auto_now_add=True)
+    last_seen_at  = models.DateTimeField()
+    updated_at    = models.DateTimeField(auto_now=True)
+    # polymorphic link to any core or plugin object
+    content_type  = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id     = models.PositiveIntegerField()
+    obj           = GenericForeignKey('content_type', 'object_id')
+    message       = models.CharField(max_length=255)
+    dedup_id      = models.CharField(max_length=128, db_index=True)
+    status        = models.CharField(max_length=16, choices=EventStatus)
+    criticallity  = models.CharField(max_length=10, choices=EventCrit)
+    event_source  = models.ForeignKey('EventSource', on_delete=models.SET_NULL,
+                                      null=True, blank=True)
+    raw           = models.JSONField()
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:event_detail', args=[self.pk])
+
+    def __str__(self):
+        return f"{self.message[:50]}..."
+
+
+class MaintenanceStatus(ChoiceSet):
+    PLANNED  = 'planned'
+    STARTED  = 'started'
+    FINISHED = 'finished'
+    CANCELED = 'canceled'
+    CHOICES  = ((PLANNED,'Planned'),(STARTED,'Started'),
+                (FINISHED,'Finished'),(CANCELED,'Canceled'))
+
+class Maintenance(NetBoxModel):
+    status        = models.CharField(max_length=10, choices=MaintenanceStatus)
+    description   = models.TextField()
+    planned_start = models.DateTimeField()
+    planned_end   = models.DateTimeField()
+    contact       = models.CharField(max_length=120)
+    # polymorphic link
+    content_type  = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id     = models.PositiveIntegerField()
+    obj           = GenericForeignKey('content_type','object_id')
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:maintenance_detail', args=[self.pk])
+
+    def __str__(self):
+        return f"{self.description[:50]}..."
+
+class ChangeType(NetBoxModel):        # reference catalog
+    name = models.CharField(max_length=64, unique=True)
+    description = models.TextField(blank=True)
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:changetype_detail', args=[self.pk])
+
+    def __str__(self):
+        return self.name
+
+class Change(NetBoxModel):
+    type          = models.ForeignKey(ChangeType, on_delete=models.PROTECT)
+    created_at    = models.DateTimeField(auto_now_add=True)
+    description   = models.TextField()
+    content_type  = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id     = models.PositiveIntegerField()
+    obj           = GenericForeignKey('content_type','object_id')
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:change_detail', args=[self.pk])
+
+    def __str__(self):
+        return f"{self.description[:50]}..."
+
+
+class IncidentStatus(ChoiceSet):
+    NEW         = 'new'
+    INVESTIGATING = 'investigating'
+    IDENTIFIED  = 'identified'
+    MONITORING  = 'monitoring'
+    RESOLVED    = 'resolved'
+    CLOSED      = 'closed'
+    CHOICES = [
+        (NEW, 'New', 'red'),
+        (INVESTIGATING, 'Investigating', 'orange'),
+        (IDENTIFIED, 'Identified', 'yellow'),
+        (MONITORING, 'Monitoring', 'blue'),
+        (RESOLVED, 'Resolved', 'green'),
+        (CLOSED, 'Closed', 'gray'),
+    ]
+
+class IncidentSeverity(ChoiceSet):
+    CRITICAL = 'critical'
+    HIGH     = 'high'
+    MEDIUM   = 'medium'
+    LOW      = 'low'
+    CHOICES = [
+        (CRITICAL, 'Critical', 'red'),
+        (HIGH, 'High', 'orange'),
+        (MEDIUM, 'Medium', 'yellow'),
+        (LOW, 'Low', 'green'),
+    ]
+
+class Incident(NetBoxModel):
+    title           = models.CharField(max_length=255)
+    description     = models.TextField(blank=True)
+    status          = models.CharField(max_length=16, choices=IncidentStatus)
+    severity        = models.CharField(max_length=10, choices=IncidentSeverity)
+    created_at      = models.DateTimeField(auto_now_add=True)
+    updated_at      = models.DateTimeField(auto_now=True)
+    detected_at     = models.DateTimeField(null=True, blank=True)
+    resolved_at     = models.DateTimeField(null=True, blank=True)
+
+    # Responders - people who respond to the incident
+    responders      = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='incidents_responding',
+        blank=True,
+        help_text='Users responding to this incident'
+    )
+
+    # Affected services
+    affected_services = models.ManyToManyField(
+        TechnicalService,
+        related_name='incidents',
+        blank=True,
+        help_text='Technical services affected by this incident'
+    )
+
+    # Related events
+    events          = models.ManyToManyField(
+        Event,
+        related_name='incidents',
+        blank=True,
+        help_text='Events related to this incident'
+    )
+
+    # Contact information
+    reporter        = models.CharField(max_length=120, blank=True)
+    commander       = models.CharField(max_length=120, blank=True, help_text='Incident commander')
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:incident_detail', args=[self.pk])
+
+    def __str__(self):
+        return self.title
