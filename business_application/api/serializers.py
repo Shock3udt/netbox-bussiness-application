@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from business_application.models import (
-    BusinessApplication, TechnicalService, EventSource, Event,
+    BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident
 )
 
@@ -25,23 +25,53 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
     """
     Serializer for the TechnicalService model.
     """
-    parent_name = serializers.CharField(source='parent.name', read_only=True)
     business_apps_count = serializers.IntegerField(source='business_apps.count', read_only=True)
     vms_count = serializers.IntegerField(source='vms.count', read_only=True)
     devices_count = serializers.IntegerField(source='devices.count', read_only=True)
     clusters_count = serializers.IntegerField(source='clusters.count', read_only=True)
+    upstream_dependencies_count = serializers.SerializerMethodField(read_only=True)
+    downstream_dependencies_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = TechnicalService
         fields = [
             'id',
             'name',
-            'parent',
-            'parent_name',
+            'service_type',
             'business_apps_count',
             'vms_count',
             'devices_count',
             'clusters_count',
+            'upstream_dependencies_count',
+            'downstream_dependencies_count',
+            'created',
+            'last_updated',
+        ]
+
+    def get_upstream_dependencies_count(self, obj):
+        return obj.get_upstream_dependencies().count()
+
+    def get_downstream_dependencies_count(self, obj):
+        return obj.get_downstream_dependencies().count()
+
+class ServiceDependencySerializer(serializers.ModelSerializer):
+    """
+    Serializer for the ServiceDependency model.
+    """
+    upstream_service_name = serializers.CharField(source='upstream_service.name', read_only=True)
+    downstream_service_name = serializers.CharField(source='downstream_service.name', read_only=True)
+
+    class Meta:
+        model = ServiceDependency
+        fields = [
+            'id',
+            'name',
+            'description',
+            'upstream_service',
+            'upstream_service_name',
+            'downstream_service',
+            'downstream_service_name',
+            'dependency_type',
             'created',
             'last_updated',
         ]

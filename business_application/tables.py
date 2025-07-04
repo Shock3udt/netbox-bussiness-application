@@ -1,7 +1,7 @@
 import django_tables2 as tables
 from netbox.tables import NetBoxTable
 from .models import (
-    BusinessApplication, TechnicalService, EventSource, Event,
+    BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident
 )
 
@@ -18,8 +18,21 @@ class BusinessApplicationTable(NetBoxTable):
 
 class TechnicalServiceTable(NetBoxTable):
     name = tables.Column(linkify=True)
-    parent = tables.Column(linkify=True)
-    dependencies_count = tables.Column(verbose_name="Dependencies", accessor="depends_on.count")
+    service_type = tables.TemplateColumn(
+        template_code="""
+        {% load helpers %}
+        {% if record.service_type == 'technical' %}
+            <span class="badge bg-primary text-light"><i class="mdi mdi-cog"></i> Technical</span>
+        {% elif record.service_type == 'logical' %}
+            <span class="badge bg-secondary text-light"><i class="mdi mdi-sitemap"></i> Logical</span>
+        {% else %}
+            <span class="badge bg-light text-dark">{{ record.get_service_type_display }}</span>
+        {% endif %}
+        """,
+        verbose_name="Type"
+    )
+    upstream_dependencies_count = tables.Column(verbose_name="Upstream", accessor="upstream_dependencies.count")
+    downstream_dependencies_count = tables.Column(verbose_name="Downstream", accessor="downstream_dependencies.count")
     business_apps_count = tables.Column(verbose_name="Business Apps", accessor="business_apps.count")
     vms_count = tables.Column(verbose_name="VMs", accessor="vms.count")
     devices_count = tables.Column(verbose_name="Devices", accessor="devices.count")
@@ -27,7 +40,87 @@ class TechnicalServiceTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = TechnicalService
-        fields = ['name', 'parent', 'dependencies_count', 'business_apps_count', 'vms_count', 'devices_count', 'clusters_count']
+        fields = ['name', 'service_type', 'upstream_dependencies_count', 'downstream_dependencies_count', 'business_apps_count', 'vms_count', 'devices_count', 'clusters_count']
+
+class ServiceDependencyTable(NetBoxTable):
+    name = tables.Column(linkify=True)
+    upstream_service = tables.Column(linkify=True)
+    downstream_service = tables.Column(linkify=True)
+    dependency_type = tables.TemplateColumn(
+        template_code="""
+        {% load helpers %}
+        {% if record.dependency_type == 'normal' %}
+            <span class="badge bg-warning text-dark"><i class="mdi mdi-link"></i> Normal</span>
+        {% elif record.dependency_type == 'redundancy' %}
+            <span class="badge bg-success text-light"><i class="mdi mdi-backup-restore"></i> Redundancy</span>
+        {% else %}
+            <span class="badge bg-light text-dark">{{ record.get_dependency_type_display }}</span>
+        {% endif %}
+        """,
+        verbose_name="Type"
+    )
+    description = tables.Column(verbose_name="Description")
+
+    class Meta(NetBoxTable.Meta):
+        model = ServiceDependency
+        fields = ['name', 'upstream_service', 'downstream_service', 'dependency_type', 'description']
+
+class UpstreamDependencyTable(NetBoxTable):
+    """Table for showing upstream dependencies of a service"""
+    name = tables.Column(linkify=True, verbose_name="Dependency Name")
+    upstream_service = tables.Column(linkify=True, verbose_name="Upstream Service")
+    dependency_type = tables.TemplateColumn(
+        template_code="""
+        {% load helpers %}
+        {% if record.dependency_type == 'normal' %}
+            <span class="badge bg-warning text-dark"><i class="mdi mdi-link"></i> Normal</span>
+        {% elif record.dependency_type == 'redundancy' %}
+            <span class="badge bg-success text-light"><i class="mdi mdi-backup-restore"></i> Redundancy</span>
+        {% else %}
+            <span class="badge bg-light text-dark">{{ record.get_dependency_type_display }}</span>
+        {% endif %}
+        """,
+        verbose_name="Type"
+    )
+    description = tables.Column(verbose_name="Description")
+
+    class Meta(NetBoxTable.Meta):
+        model = ServiceDependency
+        fields = ['name', 'upstream_service', 'dependency_type', 'description']
+
+class DownstreamDependencyTable(NetBoxTable):
+    """Table for showing downstream dependencies of a service"""
+    name = tables.Column(linkify=True, verbose_name="Dependency Name")
+    downstream_service = tables.Column(linkify=True, verbose_name="Downstream Service")
+    dependency_type = tables.TemplateColumn(
+        template_code="""
+        {% load helpers %}
+        {% if record.dependency_type == 'normal' %}
+            <span class="badge bg-warning text-dark"><i class="mdi mdi-link"></i> Normal</span>
+        {% elif record.dependency_type == 'redundancy' %}
+            <span class="badge bg-success text-light"><i class="mdi mdi-backup-restore"></i> Redundancy</span>
+        {% else %}
+            <span class="badge bg-light text-dark">{{ record.get_dependency_type_display }}</span>
+        {% endif %}
+        """,
+        verbose_name="Type"
+    )
+    description = tables.Column(verbose_name="Description")
+
+    class Meta(NetBoxTable.Meta):
+        model = ServiceDependency
+        fields = ['name', 'downstream_service', 'dependency_type', 'description']
+
+class DownstreamBusinessApplicationTable(NetBoxTable):
+    """Table for showing downstream business applications affected by a service"""
+    name = tables.Column(linkify=True)
+    appcode = tables.Column()
+    owner = tables.Column()
+    delegate = tables.Column()
+
+    class Meta(NetBoxTable.Meta):
+        model = BusinessApplication
+        fields = ['name', 'appcode', 'owner', 'delegate']
 
 class EventSourceTable(NetBoxTable):
     name = tables.Column(linkify=True)

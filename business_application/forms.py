@@ -1,6 +1,6 @@
 from django import forms
 from .models import (
-    BusinessApplication, TechnicalService, EventSource, Event,
+    BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident
 )
 
@@ -29,13 +29,31 @@ class TechnicalServiceForm(forms.ModelForm):
         model = TechnicalService
         fields = [
             'name',
-            'parent',
-            'depends_on',
-            'business_apps',
-            'vms',
-            'devices',
-            'clusters'
+            'service_type',
+            'business_apps'
         ]
+
+class ServiceDependencyForm(forms.ModelForm):
+    """
+    Form for creating and editing ServiceDependency objects.
+    """
+    class Meta:
+        model = ServiceDependency
+        fields = [
+            'name',
+            'description',
+            'upstream_service',
+            'downstream_service',
+            'dependency_type'
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Add help text for dependency types
+        self.fields['dependency_type'].help_text = (
+            "Normal: Incident occurs if ANY upstream service fails. "
+            "Redundancy: Incident occurs only if ALL upstream services fail."
+        )
 
 class EventSourceForm(forms.ModelForm):
     """

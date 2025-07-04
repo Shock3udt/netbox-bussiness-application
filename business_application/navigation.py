@@ -12,6 +12,10 @@ _business_menu_items = (
         link='plugins:business_application:technicalservice_list',
         link_text='Technical Services',
     ),
+    PluginMenuItem(
+        link='plugins:business_application:servicedependency_list',
+        link_text='Service Dependencies',
+    ),
 )
 
 _operations_menu_items = (

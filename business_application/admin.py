@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (
-    BusinessApplication, TechnicalService, EventSource, Event,
+    BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident
 )
 
@@ -11,10 +11,17 @@ class BusinessApplicationAdmin(admin.ModelAdmin):
 
 @admin.register(TechnicalService)
 class TechnicalServiceAdmin(admin.ModelAdmin):
-    list_display = ('name', 'parent')
+    list_display = ('name', 'service_type')
     search_fields = ('name',)
-    list_filter = ('parent',)
+    list_filter = ('service_type',)
     filter_horizontal = ('business_apps', 'vms', 'devices', 'clusters')
+
+@admin.register(ServiceDependency)
+class ServiceDependencyAdmin(admin.ModelAdmin):
+    list_display = ('name', 'upstream_service', 'downstream_service', 'dependency_type')
+    search_fields = ('name', 'description', 'upstream_service__name', 'downstream_service__name')
+    list_filter = ('dependency_type',)
+    autocomplete_fields = ('upstream_service', 'downstream_service')
 
 @admin.register(EventSource)
 class EventSourceAdmin(admin.ModelAdmin):

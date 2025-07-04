@@ -20,6 +20,14 @@ urlpatterns = [
     path('technical-service/<int:pk>/delete/', views.TechnicalServiceDeleteView.as_view(), name='technicalservice_delete'),
     path('technical-service/<int:pk>/', include(get_model_urls('business_application', 'technicalservice'))),
 
+    # Service Dependency URLs
+    path('service-dependency/', views.ServiceDependencyListView.as_view(), name='servicedependency_list'),
+    path('service-dependency/<int:pk>/', views.ServiceDependencyDetailView.as_view(), name='servicedependency_detail'),
+    path('service-dependency/add/', views.ServiceDependencyCreateView.as_view(), name='servicedependency_add'),
+    path('service-dependency/<int:pk>/edit/', views.ServiceDependencyEditView.as_view(), name='servicedependency_edit'),
+    path('service-dependency/<int:pk>/delete/', views.ServiceDependencyDeleteView.as_view(), name='servicedependency_delete'),
+    path('service-dependency/<int:pk>/', include(get_model_urls('business_application', 'servicedependency'))),
+
     # Event Source URLs
     path('event-source/', views.EventSourceListView.as_view(), name='eventsource_list'),
     path('event-source/<int:pk>/', views.EventSourceDetailView.as_view(), name='eventsource_detail'),

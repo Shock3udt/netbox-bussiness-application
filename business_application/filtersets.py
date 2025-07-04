@@ -1,7 +1,7 @@
 from django.db.models import Q
 from netbox.filtersets import NetBoxModelFilterSet
 from .models import (
-    BusinessApplication, TechnicalService, EventSource, Event,
+    BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident
 )
 
@@ -36,7 +36,27 @@ class TechnicalServiceFilter(NetBoxModelFilterSet):
 
     class Meta:
         model = TechnicalService
-        fields = ['name', 'parent']
+        fields = ['name', 'service_type']
+
+class ServiceDependencyFilter(NetBoxModelFilterSet):
+    """
+    Filters for the ServiceDependency model.
+    """
+
+    def search(self, queryset, name, value):
+        if not value:
+            return queryset
+        qs_filter = (
+            Q(name__icontains=value)
+            | Q(description__icontains=value)
+            | Q(upstream_service__name__icontains=value)
+            | Q(downstream_service__name__icontains=value)
+        )
+        return queryset.filter(qs_filter)
+
+    class Meta:
+        model = ServiceDependency
+        fields = ['name', 'dependency_type', 'upstream_service', 'downstream_service']
 
 class EventSourceFilter(NetBoxModelFilterSet):
     """

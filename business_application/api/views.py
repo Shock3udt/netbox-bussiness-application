@@ -1,13 +1,13 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from business_application.models import (
-    BusinessApplication, TechnicalService, EventSource, Event,
+    BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident
 )
 from business_application.api.serializers import (
-    BusinessApplicationSerializer, TechnicalServiceSerializer, EventSourceSerializer,
-    EventSerializer, MaintenanceSerializer, ChangeTypeSerializer, ChangeSerializer,
-    IncidentSerializer
+    BusinessApplicationSerializer, TechnicalServiceSerializer, ServiceDependencySerializer,
+    EventSourceSerializer, EventSerializer, MaintenanceSerializer, ChangeTypeSerializer,
+    ChangeSerializer, IncidentSerializer
 )
 from rest_framework.permissions import IsAuthenticated
 from dcim.models import Device
@@ -40,7 +40,7 @@ class TechnicalServiceViewSet(ModelViewSet):
     """
     API endpoint for managing TechnicalService objects.
     """
-    queryset = TechnicalService.objects.select_related('parent').prefetch_related(
+    queryset = TechnicalService.objects.prefetch_related(
         'business_apps', 'vms', 'devices', 'clusters'
     ).all()
     serializer_class = TechnicalServiceSerializer
@@ -48,16 +48,47 @@ class TechnicalServiceViewSet(ModelViewSet):
 
     def get_queryset(self):
         """
-        Optionally filter the queryset by name or parent from query parameters.
+        Optionally filter the queryset by name or service_type from query parameters.
         """
         queryset = super().get_queryset()
         name = self.request.query_params.get('name')
-        parent = self.request.query_params.get('parent')
+        service_type = self.request.query_params.get('service_type')
         if name:
             queryset = queryset.filter(name__icontains=name)
-        if parent:
-            queryset = queryset.filter(parent__name__icontains=parent)
+        if service_type:
+            queryset = queryset.filter(service_type=service_type)
         return queryset
+
+class ServiceDependencyViewSet(ModelViewSet):
+    """
+    API endpoint for managing ServiceDependency objects.
+    """
+    queryset = ServiceDependency.objects.select_related(
+        'upstream_service', 'downstream_service'
+    ).all()
+    serializer_class = ServiceDependencySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter dependencies by various parameters.
+        """
+        queryset = super().get_queryset()
+        name = self.request.query_params.get('name')
+        dependency_type = self.request.query_params.get('dependency_type')
+        upstream_service = self.request.query_params.get('upstream_service')
+        downstream_service = self.request.query_params.get('downstream_service')
+
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+        if dependency_type:
+            queryset = queryset.filter(dependency_type=dependency_type)
+        if upstream_service:
+            queryset = queryset.filter(upstream_service__name__icontains=upstream_service)
+        if downstream_service:
+            queryset = queryset.filter(downstream_service__name__icontains=downstream_service)
+
+        return queryset.order_by('name')
 
 class EventSourceViewSet(ModelViewSet):
     """

@@ -43,16 +43,27 @@ class BusinessApplication(NetBoxModel):
         return self.appcode
 
 
+class ServiceType(ChoiceSet):
+    TECHNICAL = 'technical'
+    LOGICAL = 'logical'
+    CHOICES = [
+        (TECHNICAL, 'Technical', 'blue'),
+        (LOGICAL, 'Logical', 'purple'),
+    ]
+
+
+class DependencyType(ChoiceSet):
+    NORMAL = 'normal'
+    REDUNDANCY = 'redundancy'
+    CHOICES = [
+        (NORMAL, 'Normal', 'orange'),
+        (REDUNDANCY, 'Redundancy', 'green'),
+    ]
+
+
 class TechnicalService(NetBoxModel):
-    parent           = models.ForeignKey('self', null=True, blank=True,
-                                         related_name='children',
-                                         on_delete=models.SET_NULL)
     name             = models.CharField(max_length=240, unique=True)
-    depends_on       = models.ManyToManyField('self',
-                                              related_name='dependent_services',
-                                              blank=True,
-                                              symmetrical=False,
-                                              help_text='Services this service depends on')
+    service_type     = models.CharField(max_length=16, choices=ServiceType, default=ServiceType.TECHNICAL, help_text='Type of service')
     business_apps    = models.ManyToManyField(BusinessApplication,
                                               related_name='technical_services',
                                               blank=True)
@@ -65,14 +76,87 @@ class TechnicalService(NetBoxModel):
     clusters         = models.ManyToManyField(Cluster,
                                               related_name='technical_services',
                                               blank=True)
+
     class Meta:
         ordering = ['name']
 
     def get_absolute_url(self):
         return reverse('plugins:business_application:technicalservice_detail', args=[self.pk])
 
+    def get_upstream_dependencies(self):
+        """Get all services this service depends on"""
+        return ServiceDependency.objects.filter(downstream_service=self)
+
+    def get_downstream_dependencies(self):
+        """Get all services that depend on this service"""
+        return ServiceDependency.objects.filter(upstream_service=self)
+
+    def get_downstream_business_applications(self):
+        """Get all business applications that are affected by this service (full subtree)"""
+        visited = set()
+        apps = set()
+
+        def traverse_downstream(service):
+            if service.id in visited:
+                return
+            visited.add(service.id)
+
+            # Add direct business applications
+            apps.update(service.business_apps.all())
+
+            # Traverse downstream services
+            for dep in service.get_downstream_dependencies():
+                traverse_downstream(dep.downstream_service)
+
+        traverse_downstream(self)
+        return apps
+
     def __str__(self):
         return self.name
+
+
+class ServiceDependency(NetBoxModel):
+    """
+    Represents a dependency relationship between two technical services.
+    """
+    name = models.CharField(max_length=240, help_text='Name of the dependency relationship')
+    description = models.TextField(blank=True, help_text='Optional description of the dependency')
+    upstream_service = models.ForeignKey(
+        TechnicalService,
+        on_delete=models.CASCADE,
+        related_name='downstream_dependencies',
+        help_text='Service that is depended upon'
+    )
+    downstream_service = models.ForeignKey(
+        TechnicalService,
+        on_delete=models.CASCADE,
+        related_name='upstream_dependencies',
+        help_text='Service that depends on the upstream service'
+    )
+    dependency_type = models.CharField(
+        max_length=16,
+        choices=DependencyType,
+        default=DependencyType.NORMAL,
+        help_text='Normal: dependent on all upstream services, Redundancy: dependent on any upstream service'
+    )
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ['upstream_service', 'downstream_service']
+        verbose_name = 'Service Dependency'
+        verbose_name_plural = 'Service Dependencies'
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:servicedependency_detail', args=[self.pk])
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.upstream_service == self.downstream_service:
+            raise ValidationError('A service cannot depend on itself')
+
+    def __str__(self):
+        return f"{self.downstream_service} depends on {self.upstream_service} ({self.name})"
+
 
 class EventStatus(ChoiceSet):
     TRIGGERED = 'triggered'
