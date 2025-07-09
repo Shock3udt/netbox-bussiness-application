@@ -31,6 +31,23 @@ class TechnicalServiceTable(NetBoxTable):
         """,
         verbose_name="Type"
     )
+    health_status = tables.TemplateColumn(
+        template_code="""
+        {% load helpers %}
+        {% if record.health_status == 'down' %}
+            <span class="badge bg-danger text-light"><i class="mdi mdi-alert-circle"></i> Down</span>
+        {% elif record.health_status == 'degraded' %}
+            <span class="badge bg-warning text-dark"><i class="mdi mdi-alert-outline"></i> Degraded</span>
+        {% elif record.health_status == 'under_maintenance' %}
+            <span class="badge bg-info text-light"><i class="mdi mdi-wrench"></i> Under Maintenance</span>
+        {% elif record.health_status == 'healthy' %}
+            <span class="badge bg-success text-light"><i class="mdi mdi-check-circle"></i> Healthy</span>
+        {% else %}
+            <span class="badge bg-light text-dark">{{ record.health_status|title }}</span>
+        {% endif %}
+        """,
+        verbose_name="Health Status"
+    )
     upstream_dependencies_count = tables.Column(verbose_name="Upstream", accessor="upstream_dependencies.count")
     downstream_dependencies_count = tables.Column(verbose_name="Downstream", accessor="downstream_dependencies.count")
     business_apps_count = tables.Column(verbose_name="Business Apps", accessor="business_apps.count")
@@ -40,7 +57,7 @@ class TechnicalServiceTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = TechnicalService
-        fields = ['name', 'service_type', 'upstream_dependencies_count', 'downstream_dependencies_count', 'business_apps_count', 'vms_count', 'devices_count', 'clusters_count']
+        fields = ['name', 'service_type', 'health_status', 'upstream_dependencies_count', 'downstream_dependencies_count', 'business_apps_count', 'vms_count', 'devices_count', 'clusters_count']
 
 class ServiceDependencyTable(NetBoxTable):
     name = tables.Column(linkify=True)

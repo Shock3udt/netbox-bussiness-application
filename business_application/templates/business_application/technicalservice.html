@@ -24,37 +24,40 @@
                         <td>{{ object.name }}</td>
                     </tr>
                     <tr>
-                        <td>Parent Service</td>
+                        <td>Service Type</td>
                         <td>
-                            {% if object.parent %}
-                                <a href="{{ object.parent.get_absolute_url }}">{{ object.parent.name }}</a>
+                            {% if object.service_type == 'technical' %}
+                                <span class="badge bg-primary text-light"><i class="mdi mdi-cog"></i> Technical</span>
+                            {% elif object.service_type == 'logical' %}
+                                <span class="badge bg-secondary text-light"><i class="mdi mdi-sitemap"></i> Logical</span>
                             {% else %}
-                                <em>None</em>
+                                {{ object.get_service_type_display }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Health Status</td>
+                        <td>
+                            {% if object.health_status == 'down' %}
+                                <span class="badge bg-danger text-light"><i class="mdi mdi-alert-circle"></i> Down</span>
+                            {% elif object.health_status == 'degraded' %}
+                                <span class="badge bg-warning text-dark"><i class="mdi mdi-alert-outline"></i> Degraded</span>
+                            {% elif object.health_status == 'under_maintenance' %}
+                                <span class="badge bg-info text-light"><i class="mdi mdi-wrench"></i> Under Maintenance</span>
+                            {% elif object.health_status == 'healthy' %}
+                                <span class="badge bg-success text-light"><i class="mdi mdi-check-circle"></i> Healthy</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark">{{ object.health_status|title }}</span>
                             {% endif %}
                         </td>
                     </tr>
                     <tr>
                         <td>Dependencies</td>
                         <td>
-                            {% if object.depends_on.count > 0 %}
-                                {% for dependency in object.depends_on.all %}
-                                    <a href="{{ dependency.get_absolute_url }}" class="badge bg-primary me-1">{{ dependency.name }}</a>
-                                {% endfor %}
-                            {% else %}
-                                <em>None</em>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Dependent Services</td>
-                        <td>
-                            {% if object.dependent_services.count > 0 %}
-                                {% for dependent in object.dependent_services.all %}
-                                    <a href="{{ dependent.get_absolute_url }}" class="badge bg-secondary me-1">{{ dependent.name }}</a>
-                                {% endfor %}
-                            {% else %}
-                                <em>None</em>
-                            {% endif %}
+                            {% with upstream_count=object.get_upstream_dependencies.count downstream_count=object.get_downstream_dependencies.count %}
+                                <span class="badge bg-info text-light me-1">{{ upstream_count }} upstream</span>
+                                <span class="badge bg-success text-light">{{ downstream_count }} downstream</span>
+                            {% endwith %}
                         </td>
                     </tr>
                 </table>
@@ -192,33 +195,6 @@
                     </table>
                 {% else %}
                     <p>No associated clusters.</p>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- Child Services -->
-        <div class="card">
-            <h5 class="card-header">
-                Child Services
-            </h5>
-            <div class="card-body">
-                {% if object.children.count > 0 %}
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for child in object.children.all %}
-                            <tr>
-                                <td><a href="{{ child.get_absolute_url }}">{{ child.name }}</a></td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                {% else %}
-                    <p>No child services.</p>
                 {% endif %}
             </div>
         </div>

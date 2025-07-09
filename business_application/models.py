@@ -7,6 +7,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from utilities.choices import ChoiceSet
 from django.conf import settings
+from django.utils import timezone
 
 
 class BusinessApplication(NetBoxModel):
@@ -61,6 +62,19 @@ class DependencyType(ChoiceSet):
     ]
 
 
+class ServiceHealthStatus(ChoiceSet):
+    DOWN = 'down'
+    DEGRADED = 'degraded'
+    UNDER_MAINTENANCE = 'under_maintenance'
+    HEALTHY = 'healthy'
+    CHOICES = [
+        (DOWN, 'Down', 'red'),
+        (DEGRADED, 'Degraded', 'orange'),
+        (UNDER_MAINTENANCE, 'Under Maintenance', 'blue'),
+        (HEALTHY, 'Healthy', 'green'),
+    ]
+
+
 class TechnicalService(NetBoxModel):
     name             = models.CharField(max_length=240, unique=True)
     service_type     = models.CharField(max_length=16, choices=ServiceType, default=ServiceType.TECHNICAL, help_text='Type of service')
@@ -110,6 +124,152 @@ class TechnicalService(NetBoxModel):
 
         traverse_downstream(self)
         return apps
+
+    @property
+    def health_status(self):
+        """
+        Calculate the health status of this service based on incidents, maintenance, and dependencies.
+        Returns one of: 'down', 'degraded', 'under_maintenance', 'healthy'
+        """
+        return self._calculate_health_status()
+
+    def _calculate_health_status(self, visited=None):
+        """
+        Internal method to calculate health status with circular dependency protection.
+        """
+        if visited is None:
+            visited = set()
+
+        # Prevent infinite loops in circular dependencies
+        if self.id in visited:
+            return ServiceHealthStatus.HEALTHY
+
+        visited.add(self.id)
+
+        # Check for active incidents that make this service down
+        active_incident_statuses = ['new', 'investigating', 'identified']
+        if self.incidents.filter(
+            status__in=active_incident_statuses,
+            resolved_at__isnull=True
+        ).exists():
+            return ServiceHealthStatus.DOWN
+
+        # Check for ongoing maintenance
+        now = timezone.now()
+        if self._has_ongoing_maintenance(now):
+            return ServiceHealthStatus.UNDER_MAINTENANCE
+
+        # Check dependencies for health impact
+        dependency_health = self._check_dependency_health(visited.copy())
+
+        # Return the most severe status found
+        if dependency_health == ServiceHealthStatus.DOWN:
+            return ServiceHealthStatus.DOWN
+        elif dependency_health == ServiceHealthStatus.DEGRADED:
+            return ServiceHealthStatus.DEGRADED
+        elif dependency_health == ServiceHealthStatus.UNDER_MAINTENANCE:
+            return ServiceHealthStatus.DEGRADED  # Service under maintenance degrades dependents
+        else:
+            return ServiceHealthStatus.HEALTHY
+
+    def _has_ongoing_maintenance(self, now):
+        """Check if this service has ongoing maintenance"""
+        from django.contrib.contenttypes.models import ContentType
+        service_ct = ContentType.objects.get_for_model(TechnicalService)
+
+        # Check direct maintenance on this service
+        if Maintenance.objects.filter(
+            content_type=service_ct,
+            object_id=self.id,
+            status='started',
+            planned_start__lte=now,
+            planned_end__gte=now
+        ).exists():
+            return True
+
+        # Check maintenance on related devices and VMs
+        device_ct = ContentType.objects.get_for_model(Device)
+        vm_ct = ContentType.objects.get_for_model(VirtualMachine)
+
+        # Check devices
+        if self.devices.exists():
+            device_ids = list(self.devices.values_list('id', flat=True))
+            if Maintenance.objects.filter(
+                content_type=device_ct,
+                object_id__in=device_ids,
+                status='started',
+                planned_start__lte=now,
+                planned_end__gte=now
+            ).exists():
+                return True
+
+        # Check VMs
+        if self.vms.exists():
+            vm_ids = list(self.vms.values_list('id', flat=True))
+            if Maintenance.objects.filter(
+                content_type=vm_ct,
+                object_id__in=vm_ids,
+                status='started',
+                planned_start__lte=now,
+                planned_end__gte=now
+            ).exists():
+                return True
+
+        return False
+
+    def _check_dependency_health(self, visited):
+        """Check the health of all dependencies and return the most severe impact"""
+        most_severe = ServiceHealthStatus.HEALTHY
+
+        # Group dependencies by type for redundancy analysis
+        normal_deps = []
+        redundant_deps = {}
+
+        for dep in self.get_upstream_dependencies():
+            if dep.dependency_type == DependencyType.NORMAL:
+                normal_deps.append(dep)
+            else:  # redundancy
+                group_key = dep.name or 'default'
+                if group_key not in redundant_deps:
+                    redundant_deps[group_key] = []
+                redundant_deps[group_key].append(dep)
+
+        # Check normal dependencies - any down service makes this service down
+        for dep in normal_deps:
+            upstream_health = dep.upstream_service._calculate_health_status(visited.copy())
+            if upstream_health == ServiceHealthStatus.DOWN:
+                return ServiceHealthStatus.DOWN
+            elif upstream_health == ServiceHealthStatus.DEGRADED:
+                most_severe = ServiceHealthStatus.DEGRADED
+            elif upstream_health == ServiceHealthStatus.UNDER_MAINTENANCE:
+                most_severe = ServiceHealthStatus.DEGRADED
+
+        # Check redundant dependencies - all services in a group must be down to cause failure
+        for group_name, deps in redundant_deps.items():
+            group_statuses = []
+            for dep in deps:
+                upstream_health = dep.upstream_service._calculate_health_status(visited.copy())
+                group_statuses.append(upstream_health)
+
+            # Count healthy services in the group
+            healthy_count = sum(1 for status in group_statuses if status == ServiceHealthStatus.HEALTHY)
+            down_count = sum(1 for status in group_statuses if status == ServiceHealthStatus.DOWN)
+            degraded_count = sum(1 for status in group_statuses if status == ServiceHealthStatus.DEGRADED)
+            maintenance_count = sum(1 for status in group_statuses if status == ServiceHealthStatus.UNDER_MAINTENANCE)
+
+            # If all services in redundancy group are down, this service is down
+            if down_count == len(deps):
+                return ServiceHealthStatus.DOWN
+
+            # If some services are down but others are healthy, this service is degraded
+            if down_count > 0 and healthy_count > 0:
+                most_severe = ServiceHealthStatus.DEGRADED
+
+            # If any service in the group is degraded or under maintenance, this service is degraded
+            if degraded_count > 0 or maintenance_count > 0:
+                most_severe = ServiceHealthStatus.DEGRADED
+
+        return most_severe
 
     def __str__(self):
         return self.name

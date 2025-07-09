@@ -1,6 +1,6 @@
 from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
-from django.shortcuts import render
+from django.shortcuts import render, redirect, get_object_or_404
 from django.views.generic import TemplateView
 from django.db.models import Q
 from django.utils import timezone
@@ -22,6 +22,7 @@ from .filtersets import (
     BusinessApplicationFilter, TechnicalServiceFilter, ServiceDependencyFilter, EventSourceFilter, EventFilter,
     MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter
 )
+from django.http import HttpResponse, JsonResponse
 
 # BusinessApplication Views
 class BusinessApplicationListView(generic.ObjectListView):
@@ -100,9 +101,9 @@ class TechnicalServiceDependenciesView(generic.ObjectView):
         downstream_apps = obj.get_downstream_business_applications()
 
         # Create table instances
-        upstream_table = UpstreamDependencyTable(upstream_deps)
-        downstream_table = DownstreamDependencyTable(downstream_deps)
-        downstream_apps_table = DownstreamBusinessApplicationTable(downstream_apps)
+        upstream_dependencies_table = UpstreamDependencyTable(upstream_deps)
+        downstream_dependencies_table = DownstreamDependencyTable(downstream_deps)
+        downstream_business_applications_table = DownstreamBusinessApplicationTable(downstream_apps)
 
         return render(
             request,
@@ -110,9 +111,9 @@ class TechnicalServiceDependenciesView(generic.ObjectView):
             context={
                 'object': obj,
                 'tab': self.tab,
-                'upstream_table': upstream_table,
-                'downstream_table': downstream_table,
-                'downstream_apps_table': downstream_apps_table,
+                'upstream_dependencies_table': upstream_dependencies_table,
+                'downstream_dependencies_table': downstream_dependencies_table,
+                'downstream_business_applications_table': downstream_business_applications_table,
             }
         )
 
@@ -482,3 +483,86 @@ class CalendarView(TemplateView):
         })
 
         return context
+
+# New view for dependency graph visualization
+def dependency_graph_api(request, pk):
+    """API endpoint to return dependency graph data for a technical service"""
+    service = get_object_or_404(TechnicalService, pk=pk)
+
+    def collect_all_dependencies(service, visited=None, depth=0, max_depth=3):
+        """Recursively collect all upstream and downstream dependencies"""
+        if visited is None:
+            visited = set()
+
+        if service.id in visited or depth > max_depth:
+            return set(), set()
+
+        visited.add(service.id)
+        nodes = {service}
+        links = set()
+
+        # Get upstream dependencies
+        for dep in service.get_upstream_dependencies():
+            upstream_service = dep.upstream_service
+            nodes.add(upstream_service)
+
+            # Always add direct links - frontend will handle redundancy grouping
+            links.add((upstream_service.id, service.id, dep.dependency_type, dep.name or f"Dependency {dep.id}"))
+
+            # Recursively get upstream dependencies
+            if depth < max_depth:
+                upstream_nodes, upstream_links = collect_all_dependencies(
+                    upstream_service, visited.copy(), depth + 1, max_depth
+                )
+                nodes.update(upstream_nodes)
+                links.update(upstream_links)
+
+        # Get downstream dependencies
+        for dep in service.get_downstream_dependencies():
+            downstream_service = dep.downstream_service
+            nodes.add(downstream_service)
+
+            # Always add direct links - frontend will handle redundancy grouping
+            links.add((service.id, downstream_service.id, dep.dependency_type, dep.name or f"Dependency {dep.id}"))
+
+            # Recursively get downstream dependencies
+            if depth < max_depth:
+                downstream_nodes, downstream_links = collect_all_dependencies(
+                    downstream_service, visited.copy(), depth + 1, max_depth
+                )
+                nodes.update(downstream_nodes)
+                links.update(downstream_links)
+
+        return nodes, links
+
+    # Collect all nodes and links
+    all_nodes, all_links = collect_all_dependencies(service)
+
+    # Convert to JSON format
+    nodes_data = []
+    for node in all_nodes:
+        nodes_data.append({
+            'id': node.id,
+            'name': node.name,
+            'service_type': node.service_type,
+            'health_status': node.health_status,
+            'node_type': 'service',
+            'upstream_count': node.get_upstream_dependencies().count(),
+            'downstream_count': node.get_downstream_dependencies().count(),
+            'url': node.get_absolute_url()
+        })
+
+    links_data = []
+    for source_id, target_id, link_type, link_name in all_links:
+        links_data.append({
+            'source': source_id,
+            'target': target_id,
+            'type': link_type,
+            'name': link_name
+        })
+
+    return JsonResponse({
+        'nodes': nodes_data,
+        'links': links_data,
+        'center_node': service.id
+    })

@@ -3,6 +3,8 @@ from utilities.urls import get_model_urls
 
 from . import views
 
+app_name = 'business_application'
+
 urlpatterns = [
     # Business Application URLs
     path('business-application/', views.BusinessApplicationListView.as_view(), name='businessapplication_list'),
@@ -10,6 +12,7 @@ urlpatterns = [
     path('business-application/add/', views.BusinessApplicationCreateView.as_view(), name='businessapplication_add'),
     path('business-application/<int:pk>/edit/', views.BusinessApplicationEditView.as_view(), name='businessapplication_edit'),
     path('business-application/<int:pk>/delete/', views.BusinessApplicationDeleteView.as_view(), name='businessapplication_delete'),
+    path('business-application/<int:pk>/changelog/', views.BusinessApplicationChangeLogView.as_view(), name='businessapplication_changelog'),
     path('business-application/<int:pk>/', include(get_model_urls('business_application', 'businessapplication'))),
 
     # Technical Service URLs
@@ -18,6 +21,10 @@ urlpatterns = [
     path('technical-service/add/', views.TechnicalServiceCreateView.as_view(), name='technicalservice_add'),
     path('technical-service/<int:pk>/edit/', views.TechnicalServiceEditView.as_view(), name='technicalservice_edit'),
     path('technical-service/<int:pk>/delete/', views.TechnicalServiceDeleteView.as_view(), name='technicalservice_delete'),
+    path('technical-service/<int:pk>/changelog/', views.TechnicalServiceChangeLogView.as_view(), name='technicalservice_changelog'),
+    path('technical-service/<int:pk>/operations/', views.TechnicalServiceOperationsView.as_view(), name='technicalservice_operations'),
+    path('technical-service/<int:pk>/dependencies/', views.TechnicalServiceDependenciesView.as_view(), name='technicalservice_dependencies'),
+    path('technical-service/<int:pk>/dependencies/api/', views.dependency_graph_api, name='technicalservice_dependencies_api'),
     path('technical-service/<int:pk>/', include(get_model_urls('business_application', 'technicalservice'))),
 
     # Service Dependency URLs
