@@ -1,7 +1,14 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
-from business_application.models import BusinessApplication
-from business_application.api.serializers import BusinessApplicationSerializer
+from business_application.models import (
+    BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
+    Maintenance, ChangeType, Change, Incident
+)
+from business_application.api.serializers import (
+    BusinessApplicationSerializer, TechnicalServiceSerializer, ServiceDependencySerializer,
+    EventSourceSerializer, EventSerializer, MaintenanceSerializer, ChangeTypeSerializer,
+    ChangeSerializer, IncidentSerializer
+)
 from rest_framework.permissions import IsAuthenticated
 from dcim.models import Device
 from virtualization.models import Cluster, VirtualMachine
@@ -28,6 +35,203 @@ class BusinessApplicationViewSet(ModelViewSet):
         if appcode:
             queryset = queryset.filter(appcode__iexact=appcode)
         return queryset
+
+class TechnicalServiceViewSet(ModelViewSet):
+    """
+    API endpoint for managing TechnicalService objects.
+    """
+    queryset = TechnicalService.objects.prefetch_related(
+        'business_apps', 'vms', 'devices', 'clusters'
+    ).all()
+    serializer_class = TechnicalServiceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Optionally filter the queryset by name or service_type from query parameters.
+        """
+        queryset = super().get_queryset()
+        name = self.request.query_params.get('name')
+        service_type = self.request.query_params.get('service_type')
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+        if service_type:
+            queryset = queryset.filter(service_type=service_type)
+        return queryset
+
+class ServiceDependencyViewSet(ModelViewSet):
+    """
+    API endpoint for managing ServiceDependency objects.
+    """
+    queryset = ServiceDependency.objects.select_related(
+        'upstream_service', 'downstream_service'
+    ).all()
+    serializer_class = ServiceDependencySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter dependencies by various parameters.
+        """
+        queryset = super().get_queryset()
+        name = self.request.query_params.get('name')
+        dependency_type = self.request.query_params.get('dependency_type')
+        upstream_service = self.request.query_params.get('upstream_service')
+        downstream_service = self.request.query_params.get('downstream_service')
+
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+        if dependency_type:
+            queryset = queryset.filter(dependency_type=dependency_type)
+        if upstream_service:
+            queryset = queryset.filter(upstream_service__name__icontains=upstream_service)
+        if downstream_service:
+            queryset = queryset.filter(downstream_service__name__icontains=downstream_service)
+
+        return queryset.order_by('name')
+
+class EventSourceViewSet(ModelViewSet):
+    """
+    API endpoint for managing EventSource objects.
+    """
+    queryset = EventSource.objects.prefetch_related('event_set').all()
+    serializer_class = EventSourceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Optionally filter the queryset by name from query parameters.
+        """
+        queryset = super().get_queryset()
+        name = self.request.query_params.get('name')
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+        return queryset
+
+class EventViewSet(ModelViewSet):
+    """
+    API endpoint for managing Event objects.
+    """
+    queryset = Event.objects.select_related('event_source', 'content_type').all()
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter events by various parameters.
+        """
+        queryset = super().get_queryset()
+        status = self.request.query_params.get('status')
+        criticality = self.request.query_params.get('criticality')
+        event_source = self.request.query_params.get('event_source')
+        message = self.request.query_params.get('message')
+
+        if status:
+            queryset = queryset.filter(status=status)
+        if criticality:
+            queryset = queryset.filter(criticallity=criticality)
+        if event_source:
+            queryset = queryset.filter(event_source__name__icontains=event_source)
+        if message:
+            queryset = queryset.filter(message__icontains=message)
+
+        return queryset.order_by('-last_seen_at')
+
+class MaintenanceViewSet(ModelViewSet):
+    """
+    API endpoint for managing Maintenance objects.
+    """
+    queryset = Maintenance.objects.select_related('content_type').all()
+    serializer_class = MaintenanceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter maintenance records by various parameters.
+        """
+        queryset = super().get_queryset()
+        status = self.request.query_params.get('status')
+        contact = self.request.query_params.get('contact')
+
+        if status:
+            queryset = queryset.filter(status=status)
+        if contact:
+            queryset = queryset.filter(contact__icontains=contact)
+
+        return queryset.order_by('planned_start')
+
+class ChangeTypeViewSet(ModelViewSet):
+    """
+    API endpoint for managing ChangeType objects.
+    """
+    queryset = ChangeType.objects.prefetch_related('change_set').all()
+    serializer_class = ChangeTypeSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Optionally filter the queryset by name from query parameters.
+        """
+        queryset = super().get_queryset()
+        name = self.request.query_params.get('name')
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+        return queryset
+
+class ChangeViewSet(ModelViewSet):
+    """
+    API endpoint for managing Change objects.
+    """
+    queryset = Change.objects.select_related('type', 'content_type').all()
+    serializer_class = ChangeSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter changes by various parameters.
+        """
+        queryset = super().get_queryset()
+        change_type = self.request.query_params.get('type')
+        description = self.request.query_params.get('description')
+
+        if change_type:
+            queryset = queryset.filter(type__name__icontains=change_type)
+        if description:
+            queryset = queryset.filter(description__icontains=description)
+
+        return queryset.order_by('-created_at')
+
+class IncidentViewSet(ModelViewSet):
+    """
+    API endpoint for managing Incident objects.
+    """
+    queryset = Incident.objects.prefetch_related('responders', 'affected_services', 'events').all()
+    serializer_class = IncidentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter incidents by various parameters.
+        """
+        queryset = super().get_queryset()
+        status = self.request.query_params.get('status')
+        severity = self.request.query_params.get('severity')
+        title = self.request.query_params.get('title')
+        reporter = self.request.query_params.get('reporter')
+        commander = self.request.query_params.get('commander')
+
+        if status:
+            queryset = queryset.filter(status=status)
+        if severity:
+            queryset = queryset.filter(severity=severity)
+        if title:
+            queryset = queryset.filter(title__icontains=title)
+        if reporter:
+            queryset = queryset.filter(reporter__icontains=reporter)
+        if commander:
+            queryset = queryset.filter(commander__icontains=commander)
+
+        return queryset.order_by('-created_at')
 
 class DeviceDownstreamAppsViewSet(ModelViewSet):
     """

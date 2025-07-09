@@ -10,5 +10,8 @@ class BusinessApplicationConfig(PluginConfig):
     max_version = "4.3.0"  # Minimum required NetBox version
     default_settings = {
     }
+    installed_apps = [
+        'django_htmx',
+    ]
 # Required for NetBox to recognize the plugin
 config = BusinessApplicationConfig
