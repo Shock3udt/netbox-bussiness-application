@@ -1,0 +1,6 @@
+{% extends 'generic/object_journal.html' %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'plugins:business_application:businessapplication_list' %}">Business Applications</a></li>
+<li class="breadcrumb-item"><a href="{{ object.get_absolute_url }}">{{ object.appcode }}</a></li>
+{% endblock %}

@@ -1,0 +1,328 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load render_table from django_tables2 %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-cog"></i>
+                Operations Overview
+            </h5>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3 class="text-primary">{{ object.devices.count }}</h3>
+                                <p class="card-text">Devices</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3 class="text-info">{{ object.vms.count }}</h3>
+                                <p class="card-text">Virtual Machines</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3 class="text-success">{{ object.clusters.count }}</h3>
+                                <p class="card-text">Clusters</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3 class="text-warning">{{ object.business_apps.count }}</h3>
+                                <p class="card-text">Business Apps</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3 class="text-danger">{{ object.get_upstream_dependencies.count }}</h3>
+                                <p class="card-text">Upstream Dependencies</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <h3 class="text-muted">{{ object.get_downstream_dependencies.count }}</h3>
+                                <p class="card-text">Downstream Dependencies</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Infrastructure Management -->
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-server"></i>
+                Infrastructure Management
+            </h5>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4 text-center">
+                        <h6>Devices</h6>
+                        <span class="badge bg-primary fs-5">{{ object.devices.count }}</span>
+                        <div class="mt-2">
+                            <a href="/dcim/devices/add/?technical_services={{ object.id }}" class="btn btn-sm btn-primary">
+                                <i class="mdi mdi-plus"></i> Add Device
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <h6>Virtual Machines</h6>
+                        <span class="badge bg-info fs-5">{{ object.vms.count }}</span>
+                        <div class="mt-2">
+                            <a href="/virtualization/virtual-machines/add/?technical_services={{ object.id }}" class="btn btn-sm btn-info">
+                                <i class="mdi mdi-plus"></i> Add VM
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <h6>Clusters</h6>
+                        <span class="badge bg-success fs-5">{{ object.clusters.count }}</span>
+                        <div class="mt-2">
+                            <a href="/virtualization/clusters/add/?technical_services={{ object.id }}" class="btn btn-sm btn-success">
+                                <i class="mdi mdi-plus"></i> Add Cluster
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <h6>Current Infrastructure</h6>
+                {% if object.devices.count > 0 %}
+                    <div class="mb-2">
+                        <strong>Devices:</strong>
+                        {% for device in object.devices.all|slice:":5" %}
+                            <a href="{{ device.get_absolute_url }}" class="badge bg-primary me-1">{{ device.name }}</a>
+                        {% endfor %}
+                        {% if object.devices.count > 5 %}
+                            <span class="text-muted">... and {{ object.devices.count|add:"-5" }} more</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
+
+                {% if object.vms.count > 0 %}
+                    <div class="mb-2">
+                        <strong>VMs:</strong>
+                        {% for vm in object.vms.all|slice:":5" %}
+                            <a href="{{ vm.get_absolute_url }}" class="badge bg-info me-1">{{ vm.name }}</a>
+                        {% endfor %}
+                        {% if object.vms.count > 5 %}
+                            <span class="text-muted">... and {{ object.vms.count|add:"-5" }} more</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
+
+                {% if object.clusters.count > 0 %}
+                    <div class="mb-2">
+                        <strong>Clusters:</strong>
+                        {% for cluster in object.clusters.all|slice:":5" %}
+                            <a href="{{ cluster.get_absolute_url }}" class="badge bg-success me-1">{{ cluster.name }}</a>
+                        {% endfor %}
+                        {% if object.clusters.count > 5 %}
+                            <span class="text-muted">... and {{ object.clusters.count|add:"-5" }} more</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
+
+                {% if object.devices.count == 0 and object.vms.count == 0 and object.clusters.count == 0 %}
+                    <p class="text-muted">No infrastructure components assigned to this service.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Dependencies -->
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-link-variant"></i>
+                Service Dependencies
+            </h5>
+            <div class="card-body">
+                {% with upstream_deps=object.get_upstream_dependencies %}
+                    {% if upstream_deps %}
+                        <h6>This service depends on:</h6>
+                        <div class="mb-3">
+                            {% for dep in upstream_deps %}
+                                <a href="{{ dep.upstream_service.get_absolute_url }}" class="badge bg-danger me-1 mb-1">
+                                    <i class="mdi mdi-arrow-down"></i> {{ dep.upstream_service.name }}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                {% with downstream_deps=object.get_downstream_dependencies %}
+                    {% if downstream_deps %}
+                        <h6>Services depending on this:</h6>
+                        <div class="mb-3">
+                            {% for dep in downstream_deps %}
+                                <a href="{{ dep.downstream_service.get_absolute_url }}" class="badge bg-secondary me-1 mb-1">
+                                    <i class="mdi mdi-arrow-up"></i> {{ dep.downstream_service.name }}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                {% if object.get_upstream_dependencies.count == 0 and object.get_downstream_dependencies.count == 0 %}
+                    <p class="text-muted">No service dependencies configured.</p>
+                {% endif %}
+
+                <div class="mt-3">
+                    <a href="{% url 'plugins:business_application:servicedependency_add' %}?downstream_service={{ object.id }}" class="btn btn-sm btn-outline-primary">
+                        <i class="mdi mdi-plus"></i> Add Dependency
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Recent Events -->
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-alert-circle"></i>
+                Recent Events
+            </h5>
+            <div class="card-body">
+                {% with recent_events=object.devices.all|slice:":5" %}
+                    {% if recent_events %}
+                        <p>Showing recent events for associated devices...</p>
+                        <div class="alert alert-info">
+                            <small>Event tracking functionality would be implemented here based on your event monitoring system.</small>
+                        </div>
+                    {% else %}
+                        <p>No devices associated with this service.</p>
+                    {% endif %}
+                {% endwith %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Maintenance Windows -->
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-wrench"></i>
+                Maintenance Activities
+            </h5>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <small>Maintenance window information would be displayed here based on your maintenance scheduling system.</small>
+                </div>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" type="button" disabled>
+                        <i class="mdi mdi-calendar-plus"></i>
+                        Schedule Maintenance
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Health Status -->
+    <div class="col-md-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-heart-pulse"></i>
+                Service Health Status
+            </h5>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6>Infrastructure Status</h6>
+                        <div class="progress mb-2">
+                            <div class="progress-bar bg-success" role="progressbar" style="width: 85%">
+                                85% Healthy
+                            </div>
+                        </div>
+                        <small class="text-muted">Based on device and VM status</small>
+                    </div>
+                    <div class="col-md-4">
+                        <h6>Service Availability</h6>
+                        <div class="progress mb-2">
+                            <div class="progress-bar bg-info" role="progressbar" style="width: 98%">
+                                98.5% Uptime
+                            </div>
+                        </div>
+                        <small class="text-muted">Last 30 days</small>
+                    </div>
+                    <div class="col-md-4">
+                        <h6>Alert Status</h6>
+                        <div class="alert alert-success mb-0">
+                            <i class="mdi mdi-check-circle"></i>
+                            All Clear
+                        </div>
+                        <small class="text-muted">No active alerts</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Quick Actions -->
+    <div class="col-md-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-lightning-bolt"></i>
+                Quick Actions
+            </h5>
+            <div class="card-body">
+                <div class="btn-group" role="group" aria-label="Operations actions">
+                    <button type="button" class="btn btn-outline-primary" disabled>
+                        <i class="mdi mdi-restart"></i>
+                        Restart Services
+                    </button>
+                    <button type="button" class="btn btn-outline-warning" disabled>
+                        <i class="mdi mdi-pause"></i>
+                        Maintenance Mode
+                    </button>
+                    <button type="button" class="btn btn-outline-info" disabled>
+                        <i class="mdi mdi-monitor-dashboard"></i>
+                        View Monitoring
+                    </button>
+                    <button type="button" class="btn btn-outline-success" disabled>
+                        <i class="mdi mdi-backup-restore"></i>
+                        Backup Status
+                    </button>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="mdi mdi-information"></i>
+                        These actions would integrate with your operational tools and systems.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

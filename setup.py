@@ -12,6 +12,10 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     license="MIT",
+    install_requires=[
+        "django-filter>=21.1",
+        "django-htmx>=1.20.0",
+    ],
     classifiers=[
         "Framework :: Django",
         "License :: OSI Approved :: MIT License",

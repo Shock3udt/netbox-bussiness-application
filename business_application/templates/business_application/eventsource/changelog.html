@@ -1,0 +1,6 @@
+{% extends 'generic/object_changelog.html' %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'plugins:business_application:eventsource_list' %}">Event Sources</a></li>
+<li class="breadcrumb-item"><a href="{{ object.get_absolute_url }}">{{ object.name }}</a></li>
+{% endblock %}
