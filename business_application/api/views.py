@@ -7,12 +7,28 @@ from business_application.models import (
 from business_application.api.serializers import (
     BusinessApplicationSerializer, TechnicalServiceSerializer, ServiceDependencySerializer,
     EventSourceSerializer, EventSerializer, MaintenanceSerializer, ChangeTypeSerializer,
-    ChangeSerializer, IncidentSerializer
+    ChangeSerializer, IncidentSerializer, GenericAlertSerializer,
+    CapacitorAlertSerializer,
+    SignalFXAlertSerializer,
+    EmailAlertSerializer,
 )
 from rest_framework.permissions import IsAuthenticated
 from dcim.models import Device
 from virtualization.models import Cluster, VirtualMachine
 from django.db.models import Q
+
+
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.viewsets import ViewSet
+from netbox.api.authentication import TokenPermissions
+from django.utils import timezone
+import json
+import logging
+
+from ..utils.correlation import AlertCorrelationEngine
+
+logger = logging.getLogger('business_application.api')
 
 
 class BusinessApplicationViewSet(ModelViewSet):
@@ -354,3 +370,293 @@ class ClusterDownstreamAppsViewSet(ModelViewSet):
             "offset": offset,
             "results": result
         })
+
+
+class AlertIngestionViewSet(ViewSet):
+    """
+    ViewSet for handling alert ingestion from various sources.
+    All endpoints require authentication via NetBox API tokens.
+    """
+    permission_classes = [IsAuthenticated, TokenPermissions]
+
+    def get_permissions(self):
+        """
+        Ensure proper permissions for alert ingestion
+        """
+        return super().get_permissions()
+
+    @action(detail=False, methods=['post'], url_path='generic')
+    def generic_alert(self, request):
+        """
+        Generic alert endpoint accepting standardized JSON payload.
+
+        Expected payload format:
+        {
+            "source": "monitoring-system",
+            "timestamp": "2025-01-10T10:00:00Z",
+            "severity": "critical|high|medium|low",
+            "status": "triggered|ok|suppressed",
+            "message": "Alert description",
+            "dedup_id": "unique-alert-identifier",
+            "target": {
+                "type": "device|vm|service",
+                "identifier": "hostname or service name"
+            },
+            "raw_data": {}
+        }
+        """
+        serializer = GenericAlertSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            logger.error(f"Invalid alert payload: {serializer.errors}")
+            return Response(
+                {"errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            event = self._process_alert(serializer.validated_data)
+
+            correlation_engine = AlertCorrelationEngine()
+            incident = correlation_engine.correlate_alert(event)
+
+            return Response({
+                "status": "success",
+                "event_id": event.id,
+                "incident_id": incident.id if incident else None,
+                "message": "Alert processed successfully"
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.exception(f"Error processing alert: {str(e)}")
+            return Response(
+                {"error": "Failed to process alert", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='capacitor')
+    def capacitor_alert(self, request):
+        """
+        Capacitor-specific alert endpoint.
+        Transforms Capacitor payload to standard format.
+        """
+        serializer = CapacitorAlertSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            logger.error(f"Invalid Capacitor alert: {serializer.errors}")
+            return Response(
+                {"errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        standard_payload = self._transform_capacitor_alert(
+            serializer.validated_data
+        )
+
+        return self._process_standard_alert(standard_payload)
+
+    @action(detail=False, methods=['post'], url_path='signalfx')
+    def signalfx_alert(self, request):
+        """
+        SignalFX-specific alert endpoint.
+        Transforms SignalFX webhook payload to standard format.
+        """
+        serializer = SignalFXAlertSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            logger.error(f"Invalid SignalFX alert: {serializer.errors}")
+            return Response(
+                {"errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        standard_payload = self._transform_signalfx_alert(
+            serializer.validated_data
+        )
+
+        return self._process_standard_alert(standard_payload)
+
+    @action(detail=False, methods=['post'], url_path='email')
+    def email_alert(self, request):
+        """
+        Email alert endpoint (typically called from N8N).
+        Transforms parsed email content to standard format.
+        """
+        serializer = EmailAlertSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            logger.error(f"Invalid email alert: {serializer.errors}")
+            return Response(
+                {"errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        standard_payload = self._transform_email_alert(
+            serializer.validated_data
+        )
+
+        return self._process_standard_alert(standard_payload)
+
+    def _process_alert(self, alert_data):
+        """
+        Core alert processing logic.
+        Creates or updates Event object.
+        """
+        existing_event = Event.objects.filter(
+            dedup_id=alert_data['dedup_id']
+        ).first()
+
+        if existing_event:
+            existing_event.last_seen_at = timezone.now()
+            existing_event.message = alert_data['message']
+            existing_event.status = alert_data['status']
+            existing_event.raw = alert_data.get('raw_data', {})
+            existing_event.save()
+            logger.info(f"Updated existing event {existing_event.id}")
+            return existing_event
+        else:
+            event = Event.objects.create(
+                dedup_id=alert_data['dedup_id'],
+                message=alert_data['message'],
+                status=alert_data['status'],
+                criticality=self._map_severity_to_criticality(
+                    alert_data['severity']
+                ),
+                raw=alert_data.get('raw_data', {}),
+                reporter=alert_data.get('source', 'unknown'),
+                event_source=self._get_or_create_event_source(
+                    alert_data['source']
+                ),
+            )
+            logger.info(f"Created new event {event.id}")
+            return event
+
+    def _process_standard_alert(self, standard_payload):
+        """
+        Common processing for all standardized alerts.
+        """
+        try:
+            serializer = GenericAlertSerializer(data=standard_payload)
+            if not serializer.is_valid():
+                return Response(
+                    {"errors": serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            event = self._process_alert(serializer.validated_data)
+
+            correlation_engine = AlertCorrelationEngine()
+            incident = correlation_engine.correlate_alert(event)
+
+            return Response({
+                "status": "success",
+                "event_id": event.id,
+                "incident_id": incident.id if incident else None,
+                "message": "Alert processed successfully"
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.exception(f"Error processing alert: {str(e)}")
+            return Response(
+                {"error": "Failed to process alert", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def _transform_capacitor_alert(self, capacitor_data):
+        """
+        Transform Capacitor-specific format to standard format.
+        """
+        return {
+            "source": "capacitor",
+            "timestamp": capacitor_data.get('alert_time', timezone.now().isoformat()),
+            "severity": self._map_capacitor_severity(
+                capacitor_data.get('priority', 3)
+            ),
+            "status": "triggered" if capacitor_data.get('state') == 'ALARM' else 'ok',
+            "message": capacitor_data.get('description', ''),
+            "dedup_id": f"capacitor-{capacitor_data.get('alert_id', '')}",
+            "target": {
+                "type": "device",
+                "identifier": capacitor_data.get('device_name', '')
+            },
+            "raw_data": capacitor_data
+        }
+
+    def _transform_signalfx_alert(self, signalfx_data):
+        """
+        Transform SignalFX webhook format to standard format.
+        """
+        return {
+            "source": "signalfx",
+            "timestamp": signalfx_data.get('timestamp', timezone.now().isoformat()),
+            "severity": signalfx_data.get('severity', 'medium').lower(),
+            "status": signalfx_data.get('alertState', 'triggered').lower(),
+            "message": signalfx_data.get('alertMessage', ''),
+            "dedup_id": f"signalfx-{signalfx_data.get('incidentId', '')}",
+            "target": {
+                "type": self._determine_target_type(signalfx_data),
+                "identifier": self._extract_target_identifier(signalfx_data)
+            },
+            "raw_data": signalfx_data
+        }
+
+    def _transform_email_alert(self, email_data):
+        """
+        Transform parsed email content to standard format.
+        """
+        # Email data comes pre-parsed from N8N
+        return {
+            "source": "email",
+            "timestamp": email_data.get('timestamp', timezone.now().isoformat()),
+            "severity": email_data.get('severity', 'medium'),
+            "status": "triggered",
+            "message": email_data.get('subject', '') + '\n' + email_data.get('body', ''),
+            "dedup_id": f"email-{email_data.get('message_id', '')}",
+            "target": {
+                "type": email_data.get('target_type', 'service'),
+                "identifier": email_data.get('target_identifier', '')
+            },
+            "raw_data": email_data
+        }
+
+    def _map_severity_to_criticality(self, severity):
+        """Map severity levels to Event criticality choices."""
+        mapping = {
+            'critical': 'CRITICAL',
+            'high': 'HIGH',
+            'medium': 'MEDIUM',
+            'low': 'LOW'
+        }
+        return mapping.get(severity.lower(), 'MEDIUM')
+
+    def _map_capacitor_severity(self, priority):
+        """Map Capacitor priority (1-5) to standard severity."""
+        mapping = {
+            1: 'critical',
+            2: 'high',
+            3: 'medium',
+            4: 'low',
+            5: 'low'
+        }
+        return mapping.get(priority, 'medium')
+
+    def _determine_target_type(self, signalfx_data):
+        """Determine target type from SignalFX data."""
+        dimensions = signalfx_data.get('dimensions', {})
+        if 'host' in dimensions:
+            return 'device'
+        elif 'vm_name' in dimensions:
+            return 'vm'
+        else:
+            return 'service'
+
+    def _extract_target_identifier(self, signalfx_data):
+        """Extract target identifier from SignalFX data."""
+        dimensions = signalfx_data.get('dimensions', {})
+        return (dimensions.get('host') or
+                dimensions.get('vm_name') or
+                dimensions.get('service_name', ''))
+
+    def _get_or_create_event_source(self, source_name):
+        """Get or create EventSource object."""
+        return None
