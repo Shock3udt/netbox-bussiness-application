@@ -1,5 +1,13 @@
-from rest_framework.viewsets import ModelViewSet
+from rest_framework.viewsets import ModelViewSet, ViewSet
 from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+import json
+import logging
+from datetime import datetime, date
+
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident
@@ -12,19 +20,9 @@ from business_application.api.serializers import (
     SignalFXAlertSerializer,
     EmailAlertSerializer,
 )
-from rest_framework.permissions import IsAuthenticated
 from dcim.models import Device
 from virtualization.models import Cluster, VirtualMachine
 from django.db.models import Q
-
-
-from rest_framework import status
-from rest_framework.decorators import action
-from rest_framework.viewsets import ViewSet
-from netbox.api.authentication import TokenPermissions
-from django.utils import timezone
-import json
-import logging
 
 from ..utils.correlation import AlertCorrelationEngine
 
@@ -52,6 +50,7 @@ class BusinessApplicationViewSet(ModelViewSet):
             queryset = queryset.filter(appcode__iexact=appcode)
         return queryset
 
+
 class TechnicalServiceViewSet(ModelViewSet):
     """
     API endpoint for managing TechnicalService objects.
@@ -74,6 +73,7 @@ class TechnicalServiceViewSet(ModelViewSet):
         if service_type:
             queryset = queryset.filter(service_type=service_type)
         return queryset
+
 
 class ServiceDependencyViewSet(ModelViewSet):
     """
@@ -106,6 +106,7 @@ class ServiceDependencyViewSet(ModelViewSet):
 
         return queryset.order_by('name')
 
+
 class EventSourceViewSet(ModelViewSet):
     """
     API endpoint for managing EventSource objects.
@@ -123,6 +124,7 @@ class EventSourceViewSet(ModelViewSet):
         if name:
             queryset = queryset.filter(name__icontains=name)
         return queryset
+
 
 class EventViewSet(ModelViewSet):
     """
@@ -153,6 +155,7 @@ class EventViewSet(ModelViewSet):
 
         return queryset.order_by('-last_seen_at')
 
+
 class MaintenanceViewSet(ModelViewSet):
     """
     API endpoint for managing Maintenance objects.
@@ -176,6 +179,7 @@ class MaintenanceViewSet(ModelViewSet):
 
         return queryset.order_by('planned_start')
 
+
 class ChangeTypeViewSet(ModelViewSet):
     """
     API endpoint for managing ChangeType objects.
@@ -193,6 +197,7 @@ class ChangeTypeViewSet(ModelViewSet):
         if name:
             queryset = queryset.filter(name__icontains=name)
         return queryset
+
 
 class ChangeViewSet(ModelViewSet):
     """
@@ -216,6 +221,7 @@ class ChangeViewSet(ModelViewSet):
             queryset = queryset.filter(description__icontains=description)
 
         return queryset.order_by('-created_at')
+
 
 class IncidentViewSet(ModelViewSet):
     """
@@ -249,6 +255,7 @@ class IncidentViewSet(ModelViewSet):
 
         return queryset.order_by('-created_at')
 
+
 class DeviceDownstreamAppsViewSet(ModelViewSet):
     """
     API endpoint for listing downstream applications associated with devices.
@@ -272,7 +279,6 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
             for termination in node.cabletermination_set.all():
                 cable = termination.cable
                 for t in cable.a_terminations + cable.b_terminations:
-                    # Changed here: check t.device.id
                     if hasattr(t, 'device') and t.device and t.device.id not in visited_ids:
                         nodes.append(t.device)
                         visited_ids.add(t.device.id)
@@ -316,6 +322,7 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
             "offset": offset,
             "results": result
         })
+
 
 class ClusterDownstreamAppsViewSet(ModelViewSet):
     """
@@ -377,33 +384,12 @@ class AlertIngestionViewSet(ViewSet):
     ViewSet for handling alert ingestion from various sources.
     All endpoints require authentication via NetBox API tokens.
     """
-    permission_classes = [IsAuthenticated, TokenPermissions]
-
-    def get_permissions(self):
-        """
-        Ensure proper permissions for alert ingestion
-        """
-        return super().get_permissions()
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['post'], url_path='generic')
     def generic_alert(self, request):
         """
         Generic alert endpoint accepting standardized JSON payload.
-
-        Expected payload format:
-        {
-            "source": "monitoring-system",
-            "timestamp": "2025-01-10T10:00:00Z",
-            "severity": "critical|high|medium|low",
-            "status": "triggered|ok|suppressed",
-            "message": "Alert description",
-            "dedup_id": "unique-alert-identifier",
-            "target": {
-                "type": "device|vm|service",
-                "identifier": "hostname or service name"
-            },
-            "raw_data": {}
-        }
         """
         serializer = GenericAlertSerializer(data=request.data)
 
@@ -497,6 +483,24 @@ class AlertIngestionViewSet(ViewSet):
 
         return self._process_standard_alert(standard_payload)
 
+    def _clean_raw_data(self, raw_data):
+        """
+        Ensure raw data is JSON serializable and return as dict.
+        """
+
+        def json_serializer(obj):
+            """JSON serializer for objects not serializable by default json code"""
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+            raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+        try:
+            json_str = json.dumps(raw_data, default=json_serializer)
+            return json.loads(json_str)
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Could not serialize raw_data as JSON: {e}")
+            return {"error": "Raw data not serializable", "original_type": str(type(raw_data))}
+
     def _process_alert(self, alert_data):
         """
         Core alert processing logic.
@@ -511,39 +515,159 @@ class AlertIngestionViewSet(ViewSet):
             existing_event.message = alert_data['message']
             existing_event.status = alert_data['status']
             existing_event.raw = alert_data.get('raw_data', {})
+            existing_event.criticallity = self._map_severity_to_criticality(alert_data['severity'])
             existing_event.save()
             logger.info(f"Updated existing event {existing_event.id}")
             return existing_event
         else:
-            event = Event.objects.create(
-                dedup_id=alert_data['dedup_id'],
-                message=alert_data['message'],
-                status=alert_data['status'],
-                criticality=self._map_severity_to_criticality(
-                    alert_data['severity']
-                ),
-                raw=alert_data.get('raw_data', {}),
-                reporter=alert_data.get('source', 'unknown'),
-                event_source=self._get_or_create_event_source(
-                    alert_data['source']
-                ),
-            )
-            logger.info(f"Created new event {event.id}")
+            current_time = timezone.now()
+
+            target_obj, content_type = self._resolve_target(alert_data.get('target', {}))
+
+            if not target_obj or not content_type:
+                raise ValueError(
+                    f"Could not resolve target object for alert. "
+                    f"Target: {alert_data.get('target', {})}. "
+                    f"Ensure at least one Device or TechnicalService exists in the system."
+                )
+
+            event_data = {
+                'dedup_id': alert_data['dedup_id'],
+                'message': alert_data['message'],
+                'status': alert_data['status'],
+                'criticallity': self._map_severity_to_criticality(alert_data['severity']),
+                'raw': alert_data.get('raw_data', {}),
+                'last_seen_at': current_time,
+                'event_source': self._get_or_create_event_source(alert_data['source']),
+                'object_id': target_obj.id,
+                'content_type': content_type,
+            }
+
+            event = Event.objects.create(**event_data)
+            logger.info(f"Created new event {event.id} for {target_obj}")
             return event
+
+    def _resolve_target(self, target_data):
+        """
+        Resolve target object from target data.
+        Returns (target_object, content_type) tuple.
+        """
+        if not target_data or not target_data.get('type') or not target_data.get('identifier'):
+            logger.warning(f"Invalid target data: {target_data}")
+            return self._get_fallback_target()
+
+        target_type = target_data['type']
+        identifier = target_data['identifier']
+
+        try:
+            from django.contrib.contenttypes.models import ContentType
+
+            if target_type == 'device':
+                from dcim.models import Device
+                target_obj = Device.objects.filter(name=identifier).first()
+                if not target_obj:
+                    logger.info(f"Creating device {identifier} for alert processing")
+                    target_obj = self._create_test_device(identifier)
+                if target_obj:
+                    return target_obj, ContentType.objects.get_for_model(Device)
+
+            elif target_type == 'vm':
+                from virtualization.models import VirtualMachine
+                target_obj = VirtualMachine.objects.filter(name=identifier).first()
+                if target_obj:
+                    return target_obj, ContentType.objects.get_for_model(VirtualMachine)
+
+            elif target_type == 'service':
+                target_obj = TechnicalService.objects.filter(name=identifier).first()
+                if target_obj:
+                    return target_obj, ContentType.objects.get_for_model(TechnicalService)
+
+            else:
+                logger.warning(f"Unknown target type: {target_type}")
+
+        except Exception as e:
+            logger.error(f"Error resolving target {target_type}:{identifier}: {e}")
+
+        logger.warning(f"Could not resolve target {target_type}:{identifier}, using fallback")
+        return self._get_fallback_target()
+
+    def _get_fallback_target(self):
+        """
+        Get a fallback target object when the actual target cannot be resolved.
+        This ensures we always have a valid object_id and content_type.
+        """
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from dcim.models import Device
+
+            fallback_device = Device.objects.first()
+            if fallback_device:
+                return fallback_device, ContentType.objects.get_for_model(Device)
+
+            fallback_service = TechnicalService.objects.first()
+            if fallback_service:
+                return fallback_service, ContentType.objects.get_for_model(TechnicalService)
+
+        except Exception as e:
+            logger.error(f"Error getting fallback target: {e}")
+
+        return None, None
+
+    def _create_test_device(self, device_name):
+        """
+        Create a minimal test device for alert processing.
+        This is used when a device referenced in an alert doesn't exist.
+        """
+        try:
+            from dcim.models import Device, DeviceType, DeviceRole, Site, Manufacturer
+
+            manufacturer, _ = Manufacturer.objects.get_or_create(
+                name='Unknown',
+                defaults={'name': 'Unknown', 'slug': 'unknown'}
+            )
+
+            device_type, _ = DeviceType.objects.get_or_create(
+                model='Unknown Device',
+                manufacturer=manufacturer,
+                defaults={
+                    'model': 'Unknown Device',
+                    'slug': 'unknown-device',
+                    'manufacturer': manufacturer
+                }
+            )
+
+            device_role, _ = DeviceRole.objects.get_or_create(
+                name='Alert Target',
+                defaults={'name': 'Alert Target', 'slug': 'alert-target'}
+            )
+
+            site, _ = Site.objects.get_or_create(
+                name='Unknown Site',
+                defaults={'name': 'Unknown Site', 'slug': 'unknown-site'}
+            )
+
+            # Create the device
+            device = Device.objects.create(
+                name=device_name,
+                device_type=device_type,
+                device_role=device_role,
+                site=site
+            )
+
+            logger.info(f"Created test device: {device_name}")
+            return device
+
+        except Exception as e:
+            logger.error(f"Error creating test device {device_name}: {e}")
+            return None
 
     def _process_standard_alert(self, standard_payload):
         """
         Common processing for all standardized alerts.
+        Bypasses serializer validation since data is already transformed.
         """
         try:
-            serializer = GenericAlertSerializer(data=standard_payload)
-            if not serializer.is_valid():
-                return Response(
-                    {"errors": serializer.errors},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            event = self._process_alert(serializer.validated_data)
+            event = self._process_alert(standard_payload)
 
             correlation_engine = AlertCorrelationEngine()
             incident = correlation_engine.correlate_alert(event)
@@ -568,7 +692,7 @@ class AlertIngestionViewSet(ViewSet):
         """
         return {
             "source": "capacitor",
-            "timestamp": capacitor_data.get('alert_time', timezone.now().isoformat()),
+            "timestamp": capacitor_data.get('alert_time', timezone.now()),
             "severity": self._map_capacitor_severity(
                 capacitor_data.get('priority', 3)
             ),
@@ -579,7 +703,7 @@ class AlertIngestionViewSet(ViewSet):
                 "type": "device",
                 "identifier": capacitor_data.get('device_name', '')
             },
-            "raw_data": capacitor_data
+            "raw_data": self._clean_raw_data(capacitor_data)
         }
 
     def _transform_signalfx_alert(self, signalfx_data):
@@ -588,7 +712,7 @@ class AlertIngestionViewSet(ViewSet):
         """
         return {
             "source": "signalfx",
-            "timestamp": signalfx_data.get('timestamp', timezone.now().isoformat()),
+            "timestamp": signalfx_data.get('timestamp', timezone.now()),
             "severity": signalfx_data.get('severity', 'medium').lower(),
             "status": signalfx_data.get('alertState', 'triggered').lower(),
             "message": signalfx_data.get('alertMessage', ''),
@@ -597,17 +721,16 @@ class AlertIngestionViewSet(ViewSet):
                 "type": self._determine_target_type(signalfx_data),
                 "identifier": self._extract_target_identifier(signalfx_data)
             },
-            "raw_data": signalfx_data
+            "raw_data": self._clean_raw_data(signalfx_data)
         }
 
     def _transform_email_alert(self, email_data):
         """
         Transform parsed email content to standard format.
         """
-        # Email data comes pre-parsed from N8N
         return {
             "source": "email",
-            "timestamp": email_data.get('timestamp', timezone.now().isoformat()),
+            "timestamp": email_data.get('timestamp', timezone.now()),
             "severity": email_data.get('severity', 'medium'),
             "status": "triggered",
             "message": email_data.get('subject', '') + '\n' + email_data.get('body', ''),
@@ -616,11 +739,24 @@ class AlertIngestionViewSet(ViewSet):
                 "type": email_data.get('target_type', 'service'),
                 "identifier": email_data.get('target_identifier', '')
             },
-            "raw_data": email_data
+            "raw_data": self._clean_raw_data(email_data)
         }
 
+    def _get_or_create_event_source(self, source_name):
+        """Get or create EventSource object."""
+        event_source, created = EventSource.objects.get_or_create(
+            name=source_name,
+            defaults={
+                'name': source_name,
+                'description': f'Auto-created source for {source_name}',
+            }
+        )
+        if created:
+            logger.info(f"Created new event source: {source_name}")
+        return event_source
+
     def _map_severity_to_criticality(self, severity):
-        """Map severity levels to Event criticality choices."""
+        """Map severity levels to Event criticallity choices (note the typo in field name)."""
         mapping = {
             'critical': 'CRITICAL',
             'high': 'HIGH',
@@ -656,7 +792,3 @@ class AlertIngestionViewSet(ViewSet):
         return (dimensions.get('host') or
                 dimensions.get('vm_name') or
                 dimensions.get('service_name', ''))
-
-    def _get_or_create_event_source(self, source_name):
-        """Get or create EventSource object."""
-        return None

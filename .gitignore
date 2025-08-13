@@ -10,6 +10,8 @@ env/
 # IDE-specific files
 .vscode/
 .idea/
+build/
+netbox_business_application.egg-info/
 
 # OS-specific files
 .DS_Store

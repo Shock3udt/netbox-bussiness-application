@@ -5,6 +5,7 @@ from business_application.models import (
 )
 
 from django.utils import timezone
+from datetime import datetime
 
 class BusinessApplicationSerializer(serializers.ModelSerializer):
     """
@@ -311,8 +312,10 @@ class SignalFXAlertSerializer(serializers.Serializer):
         """Convert Unix timestamp to datetime if provided."""
         if value:
             try:
-                return timezone.datetime.fromtimestamp(
-                    value / 1000, tz=timezone.utc
+                # Fix: Use datetime.timezone.utc instead of timezone.utc
+                from datetime import timezone as dt_timezone
+                return datetime.fromtimestamp(
+                    value / 1000, tz=dt_timezone.utc
                 )
             except (ValueError, TypeError):
                 raise serializers.ValidationError(
