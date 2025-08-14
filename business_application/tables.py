@@ -2,7 +2,7 @@ import django_tables2 as tables
 from netbox.tables import NetBoxTable
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
 )
 
 class BusinessApplicationTable(NetBoxTable):
@@ -54,10 +54,42 @@ class TechnicalServiceTable(NetBoxTable):
     vms_count = tables.Column(verbose_name="VMs", accessor="vms.count")
     devices_count = tables.Column(verbose_name="Devices", accessor="devices.count")
     clusters_count = tables.Column(verbose_name="Clusters", accessor="clusters.count")
+    pagerduty_integration = tables.TemplateColumn(
+        template_code='''
+        {% if record.has_pagerduty_integration %}
+            <span class="badge bg-success"><i class="mdi mdi-check"></i> Complete</span>
+        {% elif record.pagerduty_service_definition or record.pagerduty_router_rule %}
+            <span class="badge bg-warning"><i class="mdi mdi-alert"></i> Partial</span>
+        {% else %}
+            <span class="badge bg-light text-dark"><i class="mdi mdi-minus"></i> None</span>
+        {% endif %}
+        ''',
+        verbose_name="PagerDuty"
+    )
 
     class Meta(NetBoxTable.Meta):
         model = TechnicalService
-        fields = ['name', 'service_type', 'health_status', 'upstream_dependencies_count', 'downstream_dependencies_count', 'business_apps_count', 'vms_count', 'devices_count', 'clusters_count']
+        fields = ['name', 'service_type', 'health_status', 'pagerduty_integration', 'upstream_dependencies_count', 'downstream_dependencies_count', 'business_apps_count', 'vms_count', 'devices_count', 'clusters_count']
+
+class PagerDutyTemplateTable(NetBoxTable):
+    name = tables.Column(linkify=True)
+    template_type = tables.TemplateColumn(
+        template_code='''
+        {% if record.template_type == "service_definition" %}
+            <span class="badge bg-primary">Service Definition</span>
+        {% elif record.template_type == "router_rule" %}
+            <span class="badge bg-info">Router Rule</span>
+        {% else %}
+            {{ record.get_template_type_display }}
+        {% endif %}
+        ''',
+        verbose_name="Type"
+    )
+    services_count = tables.Column(verbose_name="Services Using", accessor="services_using_template")
+
+    class Meta(NetBoxTable.Meta):
+        model = PagerDutyTemplate
+        fields = ['name', 'template_type', 'description', 'services_count', 'created', 'last_updated']
 
 class ServiceDependencyTable(NetBoxTable):
     name = tables.Column(linkify=True)

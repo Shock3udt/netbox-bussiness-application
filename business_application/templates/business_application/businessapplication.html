@@ -1,0 +1,137 @@
+{% extends 'generic/object.html' %}
+{% load buttons %}
+{% load custom_links %}
+{% load helpers %}
+{% load plugins %}
+{% load render_table from django_tables2 %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'plugins:business_application:businessapplication_list' %}">Business Applications</a></li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <!-- Full Width Column for Name and Description -->
+    <div class="col-md-12">
+        <div class="card">
+            <h5 class="card-header">
+                Business Application Details
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <td>Name</td>
+                        <td>{{ object.name }}</td>
+                    </tr>
+                    <tr>
+                        <td>Description</td>
+                        <td>{{ object.description|placeholder }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Left Column: Main Details -->
+    <div class="col-md-4">
+        <div class="card">
+            <h5 class="card-header">
+                Additional Details
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <td>App Code</td>
+                        <td>{{ object.appcode }}</td>
+                    </tr>
+                    <tr>
+                        <td>Owner</td>
+                        <td>{{ object.owner }}</td>
+                    </tr>
+                    <tr>
+                        <td>Delegate</td>
+                        <td>{{ object.delegate|placeholder }}</td>
+                    </tr>
+                    <tr>
+                        <td>ServiceNow</td>
+                        <td>
+                            {% if object.servicenow %}
+                                <a href="{{ object.servicenow }}" target="_blank">link</a>
+                            {% else %}
+                                <em>N/A</em>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        {% include 'inc/panels/custom_fields.html' %}
+        {% include 'inc/panels/tags.html' %}
+        {% include 'inc/panels/comments.html' %}
+        {% plugin_left_page object %}
+    </div>
+
+    <!-- Right Column: Associated Virtual Machines -->
+    <div class="col-md-8">
+        <div class="card">
+            <h5 class="card-header">
+                Associated Virtual Machines
+            </h5>
+            <div class="card-body">
+                {% if object.virtual_machines.count > 0 %}
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Cluster</th>
+                                <th>Role</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for vm in object.virtual_machines.all %}
+                            <tr>
+                                <td><a href="{{ vm.get_absolute_url }}">{{ vm.name }}</a></td>
+                                <td>{{ vm.cluster.name|default:"N/A" }}</td>
+                                <td>{{ vm.role.name|default:"N/A" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No associated virtual machines.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <h5 class="card-header">
+                Associated Devices
+            </h5>
+            <div class="card-body">
+                {% if object.devices.count > 0 %}
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Role</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for device in object.devices.all %}
+                            <tr>
+                                <td><a href="{{ device.get_absolute_url }}">{{ device.name }}</a></td>
+                                <td>{{ device.type.name|default:"N/A" }}</td>
+                                <td>{{ device.role.name|default:"N/A" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No associated devices.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% plugin_right_page object %}
+    </div>
+</div>
+{% endblock %}
