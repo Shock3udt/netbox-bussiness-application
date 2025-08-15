@@ -7,20 +7,21 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
 )
 from .forms import (
     BusinessApplicationForm, TechnicalServiceForm, ServiceDependencyForm, EventSourceForm, EventForm,
-    MaintenanceForm, ChangeTypeForm, ChangeForm, IncidentForm
+    MaintenanceForm, ChangeTypeForm, ChangeForm, IncidentForm, PagerDutyTemplateForm, TechnicalServicePagerDutyForm
 )
 from .tables import (
     BusinessApplicationTable, TechnicalServiceTable, ServiceDependencyTable,
     UpstreamDependencyTable, DownstreamDependencyTable, DownstreamBusinessApplicationTable,
-    EventSourceTable, EventTable, MaintenanceTable, ChangeTypeTable, ChangeTable, IncidentTable
+    EventSourceTable, EventTable, MaintenanceTable, ChangeTypeTable, ChangeTable, IncidentTable,
+    PagerDutyTemplateTable
 )
 from .filtersets import (
     BusinessApplicationFilter, TechnicalServiceFilter, ServiceDependencyFilter, EventSourceFilter, EventFilter,
-    MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter
+    MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter, PagerDutyTemplateFilter
 )
 from django.http import HttpResponse, JsonResponse
 
@@ -116,6 +117,37 @@ class TechnicalServiceDependenciesView(generic.ObjectView):
                 'downstream_business_applications_table': downstream_business_applications_table,
             }
         )
+
+@register_model_view(TechnicalService, name='pagerduty', path='pagerduty')
+class TechnicalServicePagerDutyView(generic.ObjectView):
+    queryset = TechnicalService.objects.all()
+    template_name = 'business_application/technicalservice/pagerduty.html'
+
+    tab = ViewTab(
+        label='PagerDuty',
+        permission='business_application.view_technicalservice',
+        weight=300
+    )
+
+    def get(self, request, pk):
+        obj = self.get_object(pk=pk)
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+            }
+        )
+
+class TechnicalServicePagerDutyEditView(generic.ObjectEditView):
+    queryset = TechnicalService.objects.all()
+    form = TechnicalServicePagerDutyForm
+    template_name = 'generic/object_edit.html'
+
+    def get_object(self, **kwargs):
+        obj = super().get_object(**kwargs)
+        return obj
 
 class TechnicalServiceDetailView(generic.ObjectView):
     queryset = TechnicalService.objects.all()
@@ -299,6 +331,29 @@ class ServiceDependencyEditView(generic.ObjectEditView):
 
 class ServiceDependencyDeleteView(generic.ObjectDeleteView):
     queryset = ServiceDependency.objects.all()
+
+# PagerDuty Template Views
+class PagerDutyTemplateListView(generic.ObjectListView):
+    queryset = PagerDutyTemplate.objects.all()
+    table = PagerDutyTemplateTable
+    filterset = PagerDutyTemplateFilter
+
+class PagerDutyTemplateDetailView(generic.ObjectView):
+    queryset = PagerDutyTemplate.objects.all()
+    template_name = 'business_application/pagerdutytemplate/pagerdutytemplate.html'
+
+class PagerDutyTemplateCreateView(generic.ObjectEditView):
+    queryset = PagerDutyTemplate.objects.all()
+    form = PagerDutyTemplateForm
+
+class PagerDutyTemplateEditView(generic.ObjectEditView):
+    queryset = PagerDutyTemplate.objects.all()
+    form = PagerDutyTemplateForm
+
+class PagerDutyTemplateDeleteView(generic.ObjectDeleteView):
+    queryset = PagerDutyTemplate.objects.all()
+
+
 
 # Calendar View
 class CalendarView(TemplateView):

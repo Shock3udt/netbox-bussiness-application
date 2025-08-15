@@ -1,0 +1,241 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load static %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li class="breadcrumb-item"><a href="{% url 'plugins:business_application:pagerdutytemplate_list' %}">PagerDuty Templates</a></li>
+{% endblock %}
+
+{% block content %}
+<!-- Template Information -->
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                Template Information
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <td>Name</td>
+                        <td>{{ object.name }}</td>
+                    </tr>
+                    <tr>
+                        <td>Description</td>
+                        <td>{{ object.description|default:"No description" }}</td>
+                    </tr>
+                    <tr>
+                        <td>Template Type</td>
+                        <td>
+                            {% if object.template_type == "service_definition" %}
+                                <span class="badge bg-primary">Service Definition</span>
+                            {% elif object.template_type == "router_rule" %}
+                                <span class="badge bg-info">Router Rule</span>
+                            {% else %}
+                                {{ object.get_template_type_display }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Services Using Template</td>
+                        <td>
+                            <strong>{{ object.services_using_template }}</strong> service{{ object.services_using_template|pluralize }}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- PagerDuty Configuration Preview -->
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                PagerDuty Configuration Preview
+            </h5>
+            <div class="card-body">
+                {% if object.pagerduty_config %}
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Service Name:</strong></td>
+                            <td>{{ object.pagerduty_config.name|default:"Not specified" }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Status:</strong></td>
+                            <td>
+                                {% if object.pagerduty_config.status == 'active' %}
+                                    <span class="badge bg-success">{{ object.pagerduty_config.status|title }}</span>
+                                {% else %}
+                                    <span class="badge bg-warning">{{ object.pagerduty_config.status|title }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Escalation Policy:</strong></td>
+                            <td>
+                                {% if object.pagerduty_config.escalation_policy %}
+                                    <code>{{ object.pagerduty_config.escalation_policy.id }}</code>
+                                {% else %}
+                                    Not configured
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Urgency:</strong></td>
+                            <td>
+                                {% if object.pagerduty_config.incident_urgency_rule.urgency %}
+                                    {% if object.pagerduty_config.incident_urgency_rule.urgency == 'high' %}
+                                        <span class="badge bg-danger">{{ object.pagerduty_config.incident_urgency_rule.urgency|title }}</span>
+                                    {% else %}
+                                        <span class="badge bg-info">{{ object.pagerduty_config.incident_urgency_rule.urgency|title }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    Not specified
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                {% else %}
+                    <p class="text-muted">No PagerDuty configuration available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Services Using This Template -->
+{% if object.technical_services.exists %}
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                Technical Services Using This Template
+            </h5>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Service Name</th>
+                                <th>Service Type</th>
+                                <th>Health Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for service in object.technical_services.all %}
+                            <tr>
+                                <td><a href="{{ service.get_absolute_url }}">{{ service.name }}</a></td>
+                                <td>{{ service.get_service_type_display }}</td>
+                                <td>
+                                    {% if service.health_status == 'down' %}
+                                        <span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Down</span>
+                                    {% elif service.health_status == 'degraded' %}
+                                        <span class="badge bg-warning"><i class="mdi mdi-alert-outline"></i> Degraded</span>
+                                    {% elif service.health_status == 'under_maintenance' %}
+                                        <span class="badge bg-info"><i class="mdi mdi-wrench"></i> Under Maintenance</span>
+                                    {% elif service.health_status == 'healthy' %}
+                                        <span class="badge bg-success"><i class="mdi mdi-check-circle"></i> Healthy</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark">{{ service.health_status|title }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{% url 'plugins:business_application:technicalservice_pagerduty' service.pk %}" class="btn btn-sm btn-outline-info">
+                                        <i class="mdi mdi-shield-alert-outline"></i> View PagerDuty
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Raw Configuration -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-code-json"></i> Full Configuration
+                <div class="float-end">
+                    <button class="btn btn-sm btn-outline-info" onclick="exportTemplateConfig()">
+                        <i class="mdi mdi-download"></i> Export JSON
+                    </button>
+                </div>
+            </h5>
+            <div class="card-body">
+                {% if object.pagerduty_config %}
+                    <div class="card bg-light">
+                        <div class="card-body p-2">
+                            <pre id="template-config-json" class="mb-0" style="max-height: 400px; overflow-y: auto; font-size: 0.875em;">{{ object.pagerduty_config|safe }}</pre>
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No configuration available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+
+<!-- Properly serialize config using Django's json_script -->
+{% if object.pagerduty_config %}
+    {{ object.pagerduty_config|json_script:"template-config-data" }}
+{% endif %}
+
+<script>
+// Global config variable
+var templateConfig = null;
+{% if object.pagerduty_config %}
+try {
+    const configElement = document.getElementById('template-config-data');
+    if (configElement) {
+        templateConfig = JSON.parse(configElement.textContent);
+    }
+} catch (e) {
+    console.error('Error parsing template config:', e);
+    templateConfig = null;
+}
+{% endif %}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Pretty print the JSON configuration
+    const configElement = document.getElementById('template-config-json');
+    if (configElement && templateConfig) {
+        try {
+            configElement.textContent = JSON.stringify(templateConfig, null, 2);
+        } catch (e) {
+            console.warn('Could not pretty print template configuration:', e);
+        }
+    }
+});
+
+function exportTemplateConfig() {
+    if (templateConfig) {
+        try {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(templateConfig, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "{{ object.name|slugify }}_pagerduty_template.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        } catch (e) {
+            alert('Error exporting configuration: ' + e.message);
+        }
+    } else {
+        alert('No configuration to export.');
+    }
+}
+</script>
+{% endblock %}

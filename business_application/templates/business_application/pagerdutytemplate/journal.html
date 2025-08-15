@@ -1,0 +1,10 @@
+{% extends 'generic/object_journal.html' %}
+{% load helpers %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'plugins:business_application:pagerdutytemplate_list' %}">PagerDuty Templates</a></li>
+    <li><a href="{{ object.get_absolute_url }}">{{ object }}</a></li>
+{% endblock %}
+
+{% block title %}{{ object }} - Journal{% endblock %}

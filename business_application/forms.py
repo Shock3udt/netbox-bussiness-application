@@ -1,7 +1,9 @@
+from pydoc import text
 from django import forms
+import json
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, PagerDutyTemplateTypeChoices
 )
 
 class BusinessApplicationForm(forms.ModelForm):
@@ -30,8 +32,97 @@ class TechnicalServiceForm(forms.ModelForm):
         fields = [
             'name',
             'service_type',
-            'business_apps'
+            'business_apps',
+            'pagerduty_service_definition',
+            'pagerduty_router_rule'
         ]
+        
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Filter PagerDuty templates by type
+        self.fields['pagerduty_service_definition'].queryset = PagerDutyTemplate.objects.filter(
+            template_type=PagerDutyTemplateTypeChoices.SERVICE_DEFINITION,
+        )
+        self.fields['pagerduty_router_rule'].queryset = PagerDutyTemplate.objects.filter(
+            template_type=PagerDutyTemplateTypeChoices.ROUTER_RULE,
+        )
+
+class PagerDutyTemplateForm(forms.ModelForm):
+    """
+    Form for creating and editing PagerDutyTemplate objects.
+    """
+    pagerduty_config = forms.JSONField(
+        help_text='PagerDuty service configuration in JSON format',
+        widget=forms.Textarea(attrs={
+            'rows': 15,
+            'placeholder': '''{
+  "name": "Service Name",
+  "description": "Service Description",
+  "auto_resolve_timeout": 0,
+  "acknowledgement_timeout": 0,
+  "status": "active",
+  "escalation_policy": {
+    "id": "ABCDEFG",
+    "type": "escalation_policy_reference"
+  },
+  "incident_urgency_rule": {
+    "type": "constant",
+    "urgency": "high"
+  },
+  "support_hours": null,
+  "scheduled_actions": [],
+  "alert_grouping_parameters": {
+    "type": "content_based",
+    "config": {
+      "fields": [
+        "class",
+        "custom_details.result.series.0.tags.site"
+      ],
+      "aggregate": "all",
+      "time_window": 600,
+      "recommended_time_window": 1677
+    }
+  }
+}'''
+        })
+    )
+
+    class Meta:
+        model = PagerDutyTemplate
+        fields = ['name', 'description', 'template_type', 'pagerduty_config']
+
+    def clean_pagerduty_config(self):
+        """Custom validation for PagerDuty configuration"""
+        data = self.cleaned_data.get('pagerduty_config')
+        if data:
+            # Validate the JSON structure using the model's validation method
+            temp_template = PagerDutyTemplate(pagerduty_config=data)
+            is_valid, errors = temp_template.validate_pagerduty_config()
+            if not is_valid:
+                raise forms.ValidationError(f"Invalid PagerDuty configuration: {'; '.join(errors)}")
+        return data
+    
+
+class TechnicalServicePagerDutyForm(forms.ModelForm):
+    """
+    Form for selecting PagerDuty templates for TechnicalService objects.
+    """
+    class Meta:
+        model = TechnicalService
+        fields = ['pagerduty_service_definition', 'pagerduty_router_rule']
+        
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Filter templates by type and active status
+        self.fields['pagerduty_service_definition'].queryset = PagerDutyTemplate.objects.filter(
+            template_type=PagerDutyTemplateTypeChoices.SERVICE_DEFINITION,
+        )
+        self.fields['pagerduty_router_rule'].queryset = PagerDutyTemplate.objects.filter(
+            template_type=PagerDutyTemplateTypeChoices.ROUTER_RULE,
+        )
+
 
 class ServiceDependencyForm(forms.ModelForm):
     """

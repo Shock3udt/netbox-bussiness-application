@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
 )
 
 from django.utils import timezone
@@ -34,6 +34,7 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
     clusters_count = serializers.IntegerField(source='clusters.count', read_only=True)
     upstream_dependencies_count = serializers.SerializerMethodField(read_only=True)
     downstream_dependencies_count = serializers.SerializerMethodField(read_only=True)
+    has_pagerduty_integration = serializers.ReadOnlyField()
 
     class Meta:
         model = TechnicalService
@@ -47,6 +48,10 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
             'clusters_count',
             'upstream_dependencies_count',
             'downstream_dependencies_count',
+            'pagerduty_service_definition',
+            'pagerduty_router_rule',
+            'pagerduty_config',
+            'has_pagerduty_integration',
             'created',
             'last_updated',
         ]
@@ -210,6 +215,26 @@ class IncidentSerializer(serializers.ModelSerializer):
             'events_count',
             'reporter',
             'commander',
+            'created',
+            'last_updated',
+        ]
+
+
+class PagerDutyTemplateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the PagerDutyTemplate model.
+    """
+    services_using_template = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = PagerDutyTemplate
+        fields = [
+            'id',
+            'name',
+            'description',
+            'template_type',
+            'pagerduty_config',
+            'services_using_template',
             'created',
             'last_updated',
         ]
@@ -387,3 +412,4 @@ class WebhookSignatureSerializer(serializers.Serializer):
         raise NotImplementedError(
             "Subclasses must implement signature validation"
         )
+

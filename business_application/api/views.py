@@ -10,7 +10,7 @@ from datetime import datetime, date
 
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
 )
 from business_application.api.serializers import (
     BusinessApplicationSerializer, TechnicalServiceSerializer, ServiceDependencySerializer,
@@ -19,6 +19,7 @@ from business_application.api.serializers import (
     CapacitorAlertSerializer,
     SignalFXAlertSerializer,
     EmailAlertSerializer,
+    PagerDutyTemplateSerializer
 )
 from dcim.models import Device
 from virtualization.models import Cluster, VirtualMachine
@@ -57,7 +58,7 @@ class TechnicalServiceViewSet(ModelViewSet):
     """
     queryset = TechnicalService.objects.prefetch_related(
         'business_apps', 'vms', 'devices', 'clusters'
-    ).all()
+    ).select_related('pagerduty_template').all()
     serializer_class = TechnicalServiceSerializer
     permission_classes = [IsAuthenticated]
 
@@ -254,6 +255,24 @@ class IncidentViewSet(ModelViewSet):
             queryset = queryset.filter(commander__icontains=commander)
 
         return queryset.order_by('-created_at')
+
+
+class PagerDutyTemplateViewSet(ModelViewSet):
+    """
+    API endpoint for managing PagerDutyTemplate objects.
+    """
+    queryset = PagerDutyTemplate.objects.prefetch_related('technical_services').all()
+    serializer_class = PagerDutyTemplateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter PagerDuty templates by various parameters.
+        """
+        queryset = super().get_queryset()
+        name = self.request.query_params.get('name')
+
+        return queryset.order_by('name')
 
 
 class DeviceDownstreamAppsViewSet(ModelViewSet):
