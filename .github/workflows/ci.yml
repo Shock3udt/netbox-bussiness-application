@@ -67,6 +67,19 @@ jobs:
       run: |
         pip install -r requirements.txt
         pip install coverage pytest pytest-django pytest-cov flake8 black isort
+    
+    - name: Wait for PostgreSQL to be ready
+      run: |
+        # Install PostgreSQL client for pg_isready
+        sudo apt-get update && sudo apt-get install -y postgresql-client
+        
+        until pg_isready -h localhost -p 5432 -U netbox; do
+          echo "Waiting for PostgreSQL to be ready..."
+          sleep 2
+        done
+        echo "PostgreSQL is ready!"
+      env:
+        PGPASSWORD: netbox
 
     - name: Set up NetBox configuration
       run: |

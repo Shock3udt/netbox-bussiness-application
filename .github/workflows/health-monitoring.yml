@@ -65,6 +65,19 @@ jobs:
         pip install -r requirements.txt
         pip install pytest pytest-django
 
+    - name: Wait for PostgreSQL to be ready
+      run: |
+        # Install PostgreSQL client for pg_isready
+        sudo apt-get update && sudo apt-get install -y postgresql-client
+        
+        until pg_isready -h localhost -p 5432 -U netbox; do
+          echo "Waiting for PostgreSQL to be ready..."
+          sleep 2
+        done
+        echo "PostgreSQL is ready!"
+      env:
+        PGPASSWORD: netbox
+
     - name: Configure NetBox for health testing
       run: |
         cp /tmp/netbox/netbox/netbox/configuration_example.py /tmp/netbox/netbox/netbox/configuration.py
@@ -323,6 +336,19 @@ jobs:
         pip install -r /tmp/netbox/requirements.txt
         pip install -r requirements.txt
         pip install requests
+
+    - name: Wait for PostgreSQL to be ready
+      run: |
+        # Install PostgreSQL client for pg_isready
+        sudo apt-get update && sudo apt-get install -y postgresql-client
+        
+        until pg_isready -h localhost -p 5432 -U netbox; do
+          echo "Waiting for PostgreSQL to be ready..."
+          sleep 2
+        done
+        echo "PostgreSQL is ready!"
+      env:
+        PGPASSWORD: netbox
 
     - name: Configure NetBox
       run: |
