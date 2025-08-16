@@ -72,7 +72,7 @@ def setup_netbox_testing():
     # Install NetBox in development mode
     print("\n🔧 Installing NetBox in development mode...")
     if not run_command(
-        f"pip install -e {netbox_dir}/",
+
         "Installing NetBox"
     ):
         return None

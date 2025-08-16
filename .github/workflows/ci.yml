@@ -61,7 +61,6 @@ jobs:
     - name: Install NetBox
       run: |
         git clone --depth 1 --branch v${{ matrix.netbox-version }} https://github.com/netbox-community/netbox.git /tmp/netbox
-        pip install -e /tmp/netbox/
         pip install -r /tmp/netbox/requirements.txt
 
     - name: Install plugin dependencies
