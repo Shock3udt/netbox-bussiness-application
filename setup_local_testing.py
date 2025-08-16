@@ -56,8 +56,8 @@ def setup_netbox_testing():
     # Clone NetBox
     print("\n📥 Cloning NetBox...")
     if not run_command(
-        f"git clone --depth 1 --branch v3.7 https://github.com/netbox-community/netbox.git {netbox_dir}",
-        "Cloning NetBox v3.7"
+        f"git clone --depth 1 --branch v4.2 https://github.com/netbox-community/netbox.git {netbox_dir}",
+        "Cloning NetBox v4.2"
     ):
         return None
 

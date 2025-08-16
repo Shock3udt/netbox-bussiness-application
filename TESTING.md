@@ -147,7 +147,7 @@ python run_tests.py --quality --security
 **Triggers**: Push, PR, Daily schedule
 
 **What it does**:
-- Tests across Python 3.9-3.11 and NetBox 3.6-3.8
+- Tests across Python 3.10-3.12 and NetBox 4.0-4.2
 - Runs comprehensive test suite with coverage
 - Performs linting and code quality checks
 - Runs integration tests with real NetBox instance

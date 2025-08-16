@@ -23,11 +23,11 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11']
-        netbox-version: ['3.6', '3.7', '3.8']
+        python-version: ['3.10', '3.11', '3.12']
+        netbox-version: ['4.0', '4.1', '4.2']
         include:
-          - python-version: '3.10'
-            netbox-version: '3.7'
+          - python-version: '3.11'
+            netbox-version: '4.2'
             is_primary: true
 
     services:
@@ -378,7 +378,7 @@ jobs:
 
     - name: Upload release report
       if: always() && matrix.is_primary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: release-readiness-report-${{ inputs.version || github.ref_name }}
         path: release-report.md
@@ -399,7 +399,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: '3.11'
 
     - name: Install security scanning tools
       run: |
@@ -443,7 +443,7 @@ jobs:
         fi
 
     - name: Upload security report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: security-release-report-${{ inputs.version || github.ref_name }}

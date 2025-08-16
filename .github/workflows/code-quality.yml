@@ -21,7 +21,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: '3.11'
 
     - name: Cache pip dependencies
       uses: actions/cache@v3
@@ -280,7 +280,7 @@ jobs:
         fi
 
     - name: Upload quality report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: code-quality-report-${{ github.run_number }}
@@ -339,7 +339,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: '3.11'
 
     - name: Install safety
       run: pip install safety pip-audit
@@ -379,7 +379,7 @@ jobs:
         fi
 
     - name: Upload dependency report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: dependency-security-report-${{ github.run_number }}

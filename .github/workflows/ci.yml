@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11']
-        netbox-version: ['3.6', '3.7', '3.8']
+        python-version: ['3.10', '3.11', '3.12']
+        netbox-version: ['4.0', '4.1', '4.2']
 
     services:
       postgres:
@@ -60,7 +60,7 @@ jobs:
 
     - name: Install NetBox
       run: |
-        git clone --depth 1 --branch v${{ matrix.netbox-version }} https://github.com/netbox-community/netbox.git /tmp/netbox
+        git clone --depth 1 --branch v${{ matrix.netbox-version }} https://github.com/netbox-community/netbox.git /tmp/netbox || git clone --depth 1 --branch release-${{ matrix.netbox-version }} https://github.com/netbox-community/netbox.git /tmp/netbox
         pip install -e /tmp/netbox/
         pip install -r /tmp/netbox/requirements.txt
 
@@ -147,7 +147,7 @@ jobs:
         coverage xml
 
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: /tmp/netbox/netbox/coverage.xml
         flags: unittests
@@ -228,14 +228,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python 3.10
+    - name: Set up Python 3.11
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: '3.11'
 
     - name: Install NetBox and dependencies
       run: |
-        git clone --depth 1 --branch v3.7 https://github.com/netbox-community/netbox.git /tmp/netbox
+        git clone --depth 1 --branch v4.2 https://github.com/netbox-community/netbox.git /tmp/netbox
         pip install -e /tmp/netbox/
         pip install -r /tmp/netbox/requirements.txt
         pip install -r requirements.txt
@@ -354,7 +354,7 @@ jobs:
         semgrep --config=auto business_application/ --json --output=semgrep-report.json || true
 
     - name: Upload security scan results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: security-reports
