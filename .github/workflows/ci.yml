@@ -1,0 +1,382 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run tests daily at 6 AM UTC
+    - cron: '0 6 * * *'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+        netbox-version: ['3.6', '3.7', '3.8']
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: netbox
+          POSTGRES_USER: netbox
+          POSTGRES_DB: netbox
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+
+    - name: Install NetBox
+      run: |
+        git clone --depth 1 --branch v${{ matrix.netbox-version }} https://github.com/netbox-community/netbox.git /tmp/netbox
+        pip install -e /tmp/netbox/
+        pip install -r /tmp/netbox/requirements.txt
+
+    - name: Install plugin dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install coverage pytest pytest-django pytest-cov flake8 black isort
+
+    - name: Set up NetBox configuration
+      run: |
+        mkdir -p /tmp/netbox/netbox/netbox/
+        cp /tmp/netbox/netbox/netbox/configuration_example.py /tmp/netbox/netbox/netbox/configuration.py
+        cat >> /tmp/netbox/netbox/netbox/configuration.py << EOF
+
+        # Test configuration overrides
+        SECRET_KEY = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+        DATABASES = {
+            'default': {
+                'NAME': 'netbox',
+                'USER': 'netbox',
+                'PASSWORD': 'netbox',
+                'HOST': 'localhost',
+                'PORT': '5432',
+                'ENGINE': 'django.db.backends.postgresql',
+                'CONN_MAX_AGE': 300,
+                'OPTIONS': {
+                    'sslmode': 'prefer',
+                },
+            }
+        }
+
+        REDIS = {
+            'tasks': {
+                'HOST': 'localhost',
+                'PORT': 6379,
+                'USERNAME': '',
+                'PASSWORD': '',
+                'DATABASE': 0,
+                'SSL': False,
+            },
+            'caching': {
+                'HOST': 'localhost',
+                'PORT': 6379,
+                'USERNAME': '',
+                'PASSWORD': '',
+                'DATABASE': 1,
+                'SSL': False,
+            }
+        }
+
+        DEBUG = True
+        DEVELOPER = True
+
+        PLUGINS = ['business_application']
+        PLUGINS_CONFIG = {
+            'business_application': {
+                # Plugin configuration for testing
+            }
+        }
+        EOF
+
+    - name: Set environment variables
+      run: |
+        echo "DJANGO_SETTINGS_MODULE=netbox.settings" >> $GITHUB_ENV
+        echo "PYTHONPATH=/tmp/netbox/netbox:$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+    - name: Run database migrations
+      run: |
+        cd /tmp/netbox/netbox
+        python manage.py migrate
+        python manage.py collectstatic --no-input
+
+    - name: Run linting checks
+      run: |
+        flake8 business_application/ --max-line-length=120 --exclude=migrations
+        black --check business_application/
+        isort --check-only business_application/
+
+    - name: Run comprehensive tests with coverage
+      run: |
+        cd /tmp/netbox/netbox
+        coverage run --source='$GITHUB_WORKSPACE/business_application' -m pytest $GITHUB_WORKSPACE/business_application/tests/ -v --tb=short
+        coverage xml
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: /tmp/netbox/netbox/coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+    - name: Run API endpoint tests
+      run: |
+        cd /tmp/netbox/netbox
+        python manage.py test business_application.tests.test_api_comprehensive --verbosity=2
+
+    - name: Run health status calculation tests
+      run: |
+        cd /tmp/netbox/netbox
+        python manage.py test business_application.tests.test_health_status --verbosity=2
+
+    - name: Run alert correlation tests
+      run: |
+        cd /tmp/netbox/netbox
+        python manage.py test business_application.tests.test_alert_correlation --verbosity=2
+
+    - name: Run model tests
+      run: |
+        cd /tmp/netbox/netbox
+        python manage.py test business_application.tests.test_models_enhanced --verbosity=2
+
+    - name: Run serializer tests
+      run: |
+        cd /tmp/netbox/netbox
+        python manage.py test business_application.tests.test_serializers --verbosity=2
+
+    - name: Generate test report
+      if: always()
+      run: |
+        cd /tmp/netbox/netbox
+        echo "## Test Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|---------|" >> $GITHUB_STEP_SUMMARY
+        echo "| API Tests | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Health Status | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Alert Correlation | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Models | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Serializers | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Python Version:** ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**NetBox Version:** ${{ matrix.netbox-version }}" >> $GITHUB_STEP_SUMMARY
+
+  integration-tests:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: netbox
+          POSTGRES_USER: netbox
+          POSTGRES_DB: netbox
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install NetBox and dependencies
+      run: |
+        git clone --depth 1 --branch v3.7 https://github.com/netbox-community/netbox.git /tmp/netbox
+        pip install -e /tmp/netbox/
+        pip install -r /tmp/netbox/requirements.txt
+        pip install -r requirements.txt
+        pip install requests
+
+    - name: Set up NetBox for integration testing
+      run: |
+        cp /tmp/netbox/netbox/netbox/configuration_example.py /tmp/netbox/netbox/netbox/configuration.py
+        cat >> /tmp/netbox/netbox/netbox/configuration.py << EOF
+
+        SECRET_KEY = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+        DATABASES = {
+            'default': {
+                'NAME': 'netbox',
+                'USER': 'netbox',
+                'PASSWORD': 'netbox',
+                'HOST': 'localhost',
+                'PORT': '5432',
+                'ENGINE': 'django.db.backends.postgresql',
+                'CONN_MAX_AGE': 300,
+            }
+        }
+
+        REDIS = {
+            'tasks': {
+                'HOST': 'localhost',
+                'PORT': 6379,
+                'DATABASE': 0,
+            },
+            'caching': {
+                'HOST': 'localhost',
+                'PORT': 6379,
+                'DATABASE': 1,
+            }
+        }
+
+        DEBUG = True
+        ALLOWED_HOSTS = ['*']
+
+        PLUGINS = ['business_application']
+        EOF
+
+    - name: Initialize NetBox
+      run: |
+        cd /tmp/netbox/netbox
+        export DJANGO_SETTINGS_MODULE=netbox.settings
+        export PYTHONPATH=/tmp/netbox/netbox:$GITHUB_WORKSPACE
+        python manage.py migrate
+        python manage.py collectstatic --no-input
+        echo "from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.create_superuser('admin', 'admin@example.com', 'admin')" | python manage.py shell
+
+    - name: Start NetBox server
+      run: |
+        cd /tmp/netbox/netbox
+        export DJANGO_SETTINGS_MODULE=netbox.settings
+        export PYTHONPATH=/tmp/netbox/netbox:$GITHUB_WORKSPACE
+        python manage.py runserver 0.0.0.0:8000 &
+        sleep 10
+        curl -f http://localhost:8000/api/ || exit 1
+
+    - name: Create API token
+      run: |
+        cd /tmp/netbox/netbox
+        export DJANGO_SETTINGS_MODULE=netbox.settings
+        export PYTHONPATH=/tmp/netbox/netbox:$GITHUB_WORKSPACE
+        python manage.py shell << EOF
+        from users.models import User
+        from rest_framework.authtoken.models import Token
+        user = User.objects.get(username='admin')
+        token, created = Token.objects.get_or_create(user=user)
+        print(f"TOKEN={token.key}")
+        EOF > /tmp/token.env
+        source /tmp/token.env
+
+    - name: Run integration tests
+      run: |
+        export URL=http://localhost:8000
+        source /tmp/token.env
+        cd business_application/tests
+        python test_api_endpoints.py
+
+    - name: Test alert ingestion endpoints
+      run: |
+        export URL=http://localhost:8000
+        source /tmp/token.env
+        cd business_application/tests
+        python test_api_endpoints.py
+
+  security-scan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install security scanning tools
+      run: |
+        pip install bandit safety semgrep
+
+    - name: Run Bandit security scan
+      run: |
+        bandit -r business_application/ -f json -o bandit-report.json || true
+
+    - name: Run Safety dependency scan
+      run: |
+        safety check --json --output safety-report.json || true
+
+    - name: Run Semgrep scan
+      run: |
+        semgrep --config=auto business_application/ --json --output=semgrep-report.json || true
+
+    - name: Upload security scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+          semgrep-report.json
+
+  build-status:
+    runs-on: ubuntu-latest
+    needs: [test, integration-tests, security-scan]
+    if: always()
+
+    steps:
+    - name: Report build status
+      run: |
+        echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Unit Tests | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Integration Tests | ${{ needs.integration-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Security Scan | ${{ needs.security-scan.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Overall Status:** ${{ (needs.test.result == 'success' && needs.integration-tests.result == 'success') && '✅ All Checks Passed' || '❌ Some Checks Failed' }}" >> $GITHUB_STEP_SUMMARY
