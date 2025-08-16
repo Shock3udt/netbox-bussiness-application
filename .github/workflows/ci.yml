@@ -162,6 +162,14 @@ jobs:
             }
         }
         EOF
+        
+        # Debug: Check if configuration was written correctly
+        echo "🔍 Checking NetBox configuration file:"
+        echo "📍 Database configuration in file:"
+        grep -A 15 "DATABASES = {" /tmp/netbox/netbox/netbox/configuration.py || echo "❌ DATABASES not found in config"
+        echo ""
+        echo "📍 Plugin configuration in file:"
+        grep -A 5 "PLUGINS =" /tmp/netbox/netbox/netbox/configuration.py || echo "❌ PLUGINS not found in config"
 
     - name: Set environment variables
       run: |
@@ -173,13 +181,24 @@ jobs:
         echo "DB_PASSWORD=netbox" >> $GITHUB_ENV
         echo "DB_HOST=127.0.0.1" >> $GITHUB_ENV
         echo "DB_PORT=5432" >> $GITHUB_ENV
+        
+        # Debug environment variables
+        echo "📍 Environment variables set:"
+        echo "DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE"
+        echo "PYTHONPATH=$PYTHONPATH"
+        echo "DATABASE_URL=$DATABASE_URL"
+        echo "DB_NAME=$DB_NAME"
+        echo "DB_USER=$DB_USER"
+        echo "DB_HOST=$DB_HOST"
+        echo "DB_PORT=$DB_PORT"
 
     - name: Test database connection
       run: |
         cd /tmp/netbox/netbox
         # Test PostgreSQL connection with actual credentials
+        echo "🔌 Testing direct PostgreSQL connection..."
         PGPASSWORD=netbox psql -h localhost -U netbox -d netbox -c 'SELECT version();' || {
-          echo "Direct PostgreSQL connection failed, debugging..."
+          echo "❌ Direct PostgreSQL connection failed, debugging..."
           echo "PostgreSQL service status:"
           sudo systemctl status postgresql || echo "No systemctl available"
           echo "PostgreSQL processes:"
@@ -188,9 +207,10 @@ jobs:
           netstat -tlnp | grep 5432 || echo "Port 5432 not listening"
           exit 1
         }
+        echo "✅ Direct PostgreSQL connection successful!"
         
-        # Test Django database connection
-        python -c "import django; django.setup(); from django.db import connection; connection.ensure_connection(); print('Django database connection successful')"
+        # Comprehensive Django database debugging
+        python $GITHUB_WORKSPACE/debug_django_db.py
         
     - name: Run database migrations
       run: |
@@ -208,8 +228,10 @@ jobs:
     - name: Run comprehensive tests with coverage
       run: |
         cd /tmp/netbox/netbox
+        echo "🧪 Running comprehensive test suite..."
         coverage run --source='$GITHUB_WORKSPACE/business_application' -m pytest $GITHUB_WORKSPACE/business_application/tests/ -v --tb=short
         coverage xml
+        echo "✅ Test suite completed successfully!"
 
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v4
