@@ -70,11 +70,33 @@ jobs:
         # Install PostgreSQL client for pg_isready
         sudo apt-get update && sudo apt-get install -y postgresql-client
         
-        until pg_isready -h localhost -p 5432 -U netbox; do
-          echo "Waiting for PostgreSQL to be ready..."
+        echo "Waiting for PostgreSQL service to start..."
+        timeout=60
+        counter=0
+        
+        while [ $counter -lt $timeout ]; do
+          if pg_isready -h localhost -p 5432 -U netbox; then
+            echo "PostgreSQL is accepting connections!"
+            
+            # Test actual authentication
+            if PGPASSWORD=netbox psql -h localhost -U netbox -d netbox_health -c 'SELECT 1;' >/dev/null 2>&1; then
+              echo "PostgreSQL authentication successful!"
+              break
+            else
+              echo "PostgreSQL connection ready but authentication failed, retrying..."
+            fi
+          else
+            echo "PostgreSQL not ready yet (attempt $((counter + 1))/$timeout)..."
+          fi
+          
           sleep 2
+          counter=$((counter + 1))
         done
-        echo "PostgreSQL is ready!"
+        
+        if [ $counter -eq $timeout ]; then
+          echo "PostgreSQL failed to become ready within ${timeout} attempts"
+          exit 1
+        fi
       env:
         PGPASSWORD: netbox
 
@@ -342,11 +364,33 @@ jobs:
         # Install PostgreSQL client for pg_isready
         sudo apt-get update && sudo apt-get install -y postgresql-client
         
-        until pg_isready -h localhost -p 5432 -U netbox; do
-          echo "Waiting for PostgreSQL to be ready..."
+        echo "Waiting for PostgreSQL service to start..."
+        timeout=60
+        counter=0
+        
+        while [ $counter -lt $timeout ]; do
+          if pg_isready -h localhost -p 5432 -U netbox; then
+            echo "PostgreSQL is accepting connections!"
+            
+            # Test actual authentication
+            if PGPASSWORD=netbox psql -h localhost -U netbox -d netbox_health -c 'SELECT 1;' >/dev/null 2>&1; then
+              echo "PostgreSQL authentication successful!"
+              break
+            else
+              echo "PostgreSQL connection ready but authentication failed, retrying..."
+            fi
+          else
+            echo "PostgreSQL not ready yet (attempt $((counter + 1))/$timeout)..."
+          fi
+          
           sleep 2
+          counter=$((counter + 1))
         done
-        echo "PostgreSQL is ready!"
+        
+        if [ $counter -eq $timeout ]; then
+          echo "PostgreSQL failed to become ready within ${timeout} attempts"
+          exit 1
+        fi
       env:
         PGPASSWORD: netbox
 

@@ -73,11 +73,36 @@ jobs:
         # Install PostgreSQL client for pg_isready
         sudo apt-get update && sudo apt-get install -y postgresql-client
         
-        until pg_isready -h localhost -p 5432 -U netbox; do
-          echo "Waiting for PostgreSQL to be ready..."
+        echo "Waiting for PostgreSQL service to start..."
+        timeout=60
+        counter=0
+        
+        while [ $counter -lt $timeout ]; do
+          if pg_isready -h localhost -p 5432 -U netbox; then
+            echo "PostgreSQL is accepting connections!"
+            
+            # Test actual authentication
+            if PGPASSWORD=netbox psql -h localhost -U netbox -d netbox -c 'SELECT 1;' >/dev/null 2>&1; then
+              echo "PostgreSQL authentication successful!"
+              break
+            else
+              echo "PostgreSQL connection ready but authentication failed, retrying..."
+            fi
+          else
+            echo "PostgreSQL not ready yet (attempt $((counter + 1))/$timeout)..."
+          fi
+          
           sleep 2
+          counter=$((counter + 1))
         done
-        echo "PostgreSQL is ready!"
+        
+        if [ $counter -eq $timeout ]; then
+          echo "PostgreSQL failed to become ready within ${timeout} attempts"
+          echo "Container logs and debugging info:"
+          docker ps -a || echo "No docker available"
+          netstat -tlnp | grep 5432 || echo "Port 5432 not listening"
+          exit 1
+        fi
       env:
         PGPASSWORD: netbox
 
@@ -95,12 +120,15 @@ jobs:
                 'NAME': 'netbox',
                 'USER': 'netbox',
                 'PASSWORD': 'netbox',
-                'HOST': 'localhost',
-                'PORT': '5432',
+                'HOST': '127.0.0.1',
+                'PORT': 5432,
                 'ENGINE': 'django.db.backends.postgresql',
                 'CONN_MAX_AGE': 300,
                 'OPTIONS': {
                     'sslmode': 'prefer',
+                },
+                'TEST': {
+                    'NAME': 'test_netbox',
                 },
             }
         }
@@ -139,7 +167,31 @@ jobs:
       run: |
         echo "DJANGO_SETTINGS_MODULE=netbox.settings" >> $GITHUB_ENV
         echo "PYTHONPATH=/tmp/netbox/netbox:$GITHUB_WORKSPACE" >> $GITHUB_ENV
+        echo "DATABASE_URL=postgresql://netbox:netbox@127.0.0.1:5432/netbox" >> $GITHUB_ENV
+        echo "DB_NAME=netbox" >> $GITHUB_ENV
+        echo "DB_USER=netbox" >> $GITHUB_ENV
+        echo "DB_PASSWORD=netbox" >> $GITHUB_ENV
+        echo "DB_HOST=127.0.0.1" >> $GITHUB_ENV
+        echo "DB_PORT=5432" >> $GITHUB_ENV
 
+    - name: Test database connection
+      run: |
+        cd /tmp/netbox/netbox
+        # Test PostgreSQL connection with actual credentials
+        PGPASSWORD=netbox psql -h localhost -U netbox -d netbox -c 'SELECT version();' || {
+          echo "Direct PostgreSQL connection failed, debugging..."
+          echo "PostgreSQL service status:"
+          sudo systemctl status postgresql || echo "No systemctl available"
+          echo "PostgreSQL processes:"
+          ps aux | grep postgres || echo "No postgres processes found"
+          echo "Network connections:"
+          netstat -tlnp | grep 5432 || echo "Port 5432 not listening"
+          exit 1
+        }
+        
+        # Test Django database connection
+        python -c "import django; django.setup(); from django.db import connection; connection.ensure_connection(); print('Django database connection successful')"
+        
     - name: Run database migrations
       run: |
         cd /tmp/netbox/netbox
