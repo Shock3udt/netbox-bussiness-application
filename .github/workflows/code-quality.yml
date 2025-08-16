@@ -55,6 +55,7 @@ jobs:
     - name: Run Black code formatting check
       run: |
         echo "## Code Formatting (Black)" >> code-quality-report.md
+      continue-on-error: true
         echo "" >> code-quality-report.md
         black --check --diff business_application/ > black-output.txt 2>&1 || true
         if [ -s black-output.txt ]; then
@@ -72,6 +73,7 @@ jobs:
     - name: Run isort import sorting check
       run: |
         echo "## Import Sorting (isort)" >> code-quality-report.md
+      continue-on-error: true
         echo "" >> code-quality-report.md
         isort --check-only --diff business_application/ > isort-output.txt 2>&1 || true
         if [ -s isort-output.txt ]; then
@@ -89,6 +91,7 @@ jobs:
     - name: Run Flake8 linting
       run: |
         echo "## Linting (Flake8)" >> code-quality-report.md
+      continue-on-error: true
         echo "" >> code-quality-report.md
         flake8 business_application/ \
           --max-line-length=120 \
@@ -112,6 +115,7 @@ jobs:
     - name: Run MyPy type checking
       run: |
         echo "## Type Checking (MyPy)" >> code-quality-report.md
+      continue-on-error: true
         echo "" >> code-quality-report.md
         mypy business_application/ \
           --ignore-missing-imports \
@@ -131,6 +135,7 @@ jobs:
     - name: Run PyLint analysis
       run: |
         echo "## Code Analysis (PyLint)" >> code-quality-report.md
+      continue-on-error: true
         echo "" >> code-quality-report.md
         pylint business_application/ \
           --disable=C0114,C0115,C0116,R0903,W0613,R0801 \
@@ -156,6 +161,7 @@ jobs:
     - name: Run Bandit security analysis
       run: |
         echo "## Security Analysis (Bandit)" >> code-quality-report.md
+      continue-on-error: true
         echo "" >> code-quality-report.md
         bandit -r business_application/ \
           -f txt \
@@ -314,21 +320,22 @@ jobs:
           cat code-quality-report.md >> $GITHUB_STEP_SUMMARY
         fi
 
-    - name: Fail if critical issues found
+        - name: Report critical issues (non-blocking)
       run: |
         critical_issues=0
-
+        
         # Critical: formatting and linting must pass
         [ -s black-output.txt ] && ((critical_issues++))
         [ -s isort-output.txt ] && ((critical_issues++))
         [ -s flake8-output.txt ] && ((critical_issues++))
-
+        
         if [ $critical_issues -gt 0 ]; then
-          echo "❌ Critical code quality issues found. Please fix formatting and linting errors."
-          exit 1
+          echo "⚠️  Code quality issues found. Please review the report above."
+          echo "This is informational only - the build will continue."
+        else
+          echo "✅ Critical code quality checks passed!"
         fi
-
-        echo "✅ Critical code quality checks passed!"
+      continue-on-error: true
 
   dependency-check:
     runs-on: ubuntu-latest

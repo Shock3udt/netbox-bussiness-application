@@ -24,10 +24,10 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
-        netbox-version: ['4.0', '4.1', '4.2']
+        netbox-version: ['4.0.11', '4.1.8', '4.2.7']
         include:
           - python-version: '3.11'
-            netbox-version: '4.2'
+            netbox-version: '4.2.7'
             is_primary: true
 
     services:

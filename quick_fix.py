@@ -29,7 +29,7 @@ def main():
     print("\n📦 Step 1: Installing NetBox...")
     if not run_cmd("pip install 'netbox>=4.0,<5.0'", "Installing NetBox"):
         print("⚠️  NetBox installation failed. Trying alternative...")
-        if not run_cmd("pip install git+https://github.com/netbox-community/netbox.git@v4.2", "Installing NetBox from GitHub"):
+        if not run_cmd("pip install git+https://github.com/netbox-community/netbox.git@v4.2.7", "Installing NetBox from GitHub"):
             print("❌ Could not install NetBox. Please install manually.")
             return False
 

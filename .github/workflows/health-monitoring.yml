@@ -59,7 +59,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        git clone --depth 1 --branch v4.2 https://github.com/netbox-community/netbox.git /tmp/netbox
+        git clone --depth 1 --branch v4.2.7 https://github.com/netbox-community/netbox.git /tmp/netbox
         pip install -e /tmp/netbox/
         pip install -r /tmp/netbox/requirements.txt
         pip install -r requirements.txt
@@ -318,7 +318,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        git clone --depth 1 --branch v4.2 https://github.com/netbox-community/netbox.git /tmp/netbox
+        git clone --depth 1 --branch v4.2.7 https://github.com/netbox-community/netbox.git /tmp/netbox
         pip install -e /tmp/netbox/
         pip install -r /tmp/netbox/requirements.txt
         pip install -r requirements.txt
