@@ -165,11 +165,28 @@ jobs:
         
         # Debug: Check if configuration was written correctly
         echo "🔍 Checking NetBox configuration file:"
-        echo "📍 Database configuration in file:"
-        grep -A 15 "DATABASES = {" /tmp/netbox/netbox/netbox/configuration.py || echo "❌ DATABASES not found in config"
-        echo ""
-        echo "📍 Plugin configuration in file:"
-        grep -A 5 "PLUGINS =" /tmp/netbox/netbox/netbox/configuration.py || echo "❌ PLUGINS not found in config"
+        echo "📍 Configuration file location: /tmp/netbox/netbox/netbox/configuration.py"
+        
+        if [ -f "/tmp/netbox/netbox/netbox/configuration.py" ]; then
+          echo "✅ Configuration file exists"
+          echo "📏 File size: $(wc -c < /tmp/netbox/netbox/netbox/configuration.py) bytes"
+          
+          echo "
+📍 Database configuration in file:"
+          grep -A 20 "DATABASES = {" /tmp/netbox/netbox/netbox/configuration.py || echo "❌ DATABASES not found in config"
+          
+          echo "
+📍 Plugin configuration in file:"
+          grep -A 5 "PLUGINS =" /tmp/netbox/netbox/netbox/configuration.py || echo "❌ PLUGINS not found in config"
+          
+          echo "
+🔍 Last 20 lines of configuration file:"
+          tail -20 /tmp/netbox/netbox/netbox/configuration.py
+        else
+          echo "❌ Configuration file does not exist!"
+          echo "📁 Directory contents:"
+          ls -la /tmp/netbox/netbox/netbox/ || echo "Directory does not exist"
+        fi
 
     - name: Set environment variables
       run: |
@@ -209,8 +226,14 @@ jobs:
         }
         echo "✅ Direct PostgreSQL connection successful!"
         
-        # Comprehensive Django database debugging
-        python $GITHUB_WORKSPACE/debug_django_db.py
+        # Test Django database connection (simple)
+        echo "🔌 Testing Django database connection..."
+        python $GITHUB_WORKSPACE/test_django_db_simple.py || {
+          echo "⚠️  Simple test failed, running comprehensive debugger..."
+          python $GITHUB_WORKSPACE/debug_django_db.py
+          exit 1
+        }
+        echo "✅ Django database connection test passed!"
         
     - name: Run database migrations
       run: |

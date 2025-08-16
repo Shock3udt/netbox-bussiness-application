@@ -52,7 +52,21 @@ def debug_python_path():
     print("\nTrying to import NetBox...")
     try:
         import netbox
-        print(f"✅ NetBox imported successfully: {netbox.__version__}")
+        version = getattr(netbox, '__version__', 'unknown')
+        print(f"✅ NetBox imported successfully (version: {version})")
+        
+        # Try to get version from other common locations
+        try:
+            from netbox.config import VERSION
+            print(f"  NetBox VERSION from config: {VERSION}")
+        except (ImportError, AttributeError):
+            try:
+                import netbox.constants
+                version_info = getattr(netbox.constants, 'VERSION', 'not found')
+                print(f"  NetBox VERSION from constants: {version_info}")
+            except (ImportError, AttributeError):
+                print("  NetBox version info not found in standard locations")
+                
     except ImportError as e:
         print(f"❌ NetBox import failed: {e}")
         return False
@@ -194,28 +208,55 @@ def main():
     # Debug environment
     debug_environment()
     
-    # Debug Python imports
-    if not debug_python_path():
+    # Debug Python imports (don't fail on NetBox version issues)
+    try:
+        if not debug_python_path():
+            print("⚠️  Some import issues detected, but continuing...")
+    except Exception as e:
+        print(f"⚠️  Python path debugging failed: {e}")
+        print("Continuing with Django settings debugging...")
+    
+    # Debug Django settings (this is critical)
+    django_ok = False
+    try:
+        django_ok = debug_django_settings()
+        if not django_ok:
+            success = False
+    except Exception as e:
+        print(f"❌ Django settings debugging failed: {e}")
+        import traceback
+        traceback.print_exc()
         success = False
     
-    # Debug Django settings  
-    if not debug_django_settings():
-        success = False
-    
-    # Debug database connection
-    if not debug_database_connection():
-        success = False
+    # Debug database connection (only if Django settings worked)
+    if django_ok:
+        try:
+            if not debug_database_connection():
+                success = False
+        except Exception as e:
+            print(f"❌ Database connection debugging failed: {e}")
+            import traceback
+            traceback.print_exc()
+            success = False
+    else:
+        print("⚠️  Skipping database connection test due to Django settings issues")
         
-    # Debug plugin
-    if not debug_netbox_plugin():
-        success = False
+    # Debug plugin (not critical for database connection)
+    try:
+        if not debug_netbox_plugin():
+            print("⚠️  Plugin import issues detected (not critical for database connection)")
+    except Exception as e:
+        print(f"⚠️  Plugin debugging failed: {e}")
+        print("This doesn't affect database connection testing.")
     
     print_section("📊 SUMMARY")
     if success:
-        print("🎉 All checks passed!")
+        print("🎉 All critical checks passed!")
+        print("Database connection should work correctly.")
         sys.exit(0)
     else:
-        print("❌ Some checks failed. See details above.")
+        print("❌ Critical database connection issues found.")
+        print("See detailed analysis above to identify the root cause.")
         sys.exit(1)
 
 
