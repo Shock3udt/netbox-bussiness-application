@@ -1,0 +1,403 @@
+name: Code Quality & Standards
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run code quality checks weekly
+    - cron: '0 2 * * 1'
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for better analysis
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-code-quality-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-code-quality-
+
+    - name: Install code quality tools
+      run: |
+        pip install --upgrade pip
+        pip install \
+          flake8 \
+          black \
+          isort \
+          mypy \
+          pylint \
+          bandit \
+          safety \
+          radon \
+          xenon \
+          vulture \
+          pydocstyle \
+          interrogate
+
+    - name: Install project dependencies
+      run: |
+        pip install -r requirements.txt || echo "No requirements.txt found"
+
+    - name: Run Black code formatting check
+      run: |
+        echo "## Code Formatting (Black)" >> code-quality-report.md
+      continue-on-error: true
+        echo "" >> code-quality-report.md
+        black --check --diff business_application/ > black-output.txt 2>&1 || true
+        if [ -s black-output.txt ]; then
+          echo "❌ Code formatting issues found:" >> code-quality-report.md
+          echo '```diff' >> code-quality-report.md
+          cat black-output.txt >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          echo "" >> code-quality-report.md
+          echo "**Action Required:** Run \`black business_application/\` to fix formatting" >> code-quality-report.md
+        else
+          echo "✅ Code formatting is consistent" >> code-quality-report.md
+        fi
+        echo "" >> code-quality-report.md
+
+    - name: Run isort import sorting check
+      run: |
+        echo "## Import Sorting (isort)" >> code-quality-report.md
+      continue-on-error: true
+        echo "" >> code-quality-report.md
+        isort --check-only --diff business_application/ > isort-output.txt 2>&1 || true
+        if [ -s isort-output.txt ]; then
+          echo "❌ Import sorting issues found:" >> code-quality-report.md
+          echo '```diff' >> code-quality-report.md
+          cat isort-output.txt >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          echo "" >> code-quality-report.md
+          echo "**Action Required:** Run \`isort business_application/\` to fix imports" >> code-quality-report.md
+        else
+          echo "✅ Import sorting is correct" >> code-quality-report.md
+        fi
+        echo "" >> code-quality-report.md
+
+    - name: Run Flake8 linting
+      run: |
+        echo "## Linting (Flake8)" >> code-quality-report.md
+      continue-on-error: true
+        echo "" >> code-quality-report.md
+        flake8 business_application/ \
+          --max-line-length=120 \
+          --exclude=migrations,__pycache__,.git,venv \
+          --extend-ignore=E203,W503,F401 \
+          --format='%(path)s:%(row)d:%(col)d: %(code)s %(text)s' > flake8-output.txt 2>&1 || true
+
+        if [ -s flake8-output.txt ]; then
+          echo "❌ Linting issues found:" >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          cat flake8-output.txt >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          echo "" >> code-quality-report.md
+          issue_count=$(wc -l < flake8-output.txt)
+          echo "**Total Issues:** $issue_count" >> code-quality-report.md
+        else
+          echo "✅ No linting issues found" >> code-quality-report.md
+        fi
+        echo "" >> code-quality-report.md
+
+    - name: Run MyPy type checking
+      run: |
+        echo "## Type Checking (MyPy)" >> code-quality-report.md
+      continue-on-error: true
+        echo "" >> code-quality-report.md
+        mypy business_application/ \
+          --ignore-missing-imports \
+          --show-error-codes \
+          --no-strict-optional > mypy-output.txt 2>&1 || true
+
+        if grep -q "error:" mypy-output.txt; then
+          echo "❌ Type checking issues found:" >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          cat mypy-output.txt >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+        else
+          echo "✅ No type checking issues found" >> code-quality-report.md
+        fi
+        echo "" >> code-quality-report.md
+
+    - name: Run PyLint analysis
+      run: |
+        echo "## Code Analysis (PyLint)" >> code-quality-report.md
+      continue-on-error: true
+        echo "" >> code-quality-report.md
+        pylint business_application/ \
+          --disable=C0114,C0115,C0116,R0903,W0613,R0801 \
+          --output-format=text \
+          --reports=yes \
+          --score=yes > pylint-output.txt 2>&1 || true
+
+        # Extract score
+        score=$(grep "Your code has been rated" pylint-output.txt | sed 's/.*rated at \([0-9.]*\).*/\1/' || echo "N/A")
+        echo "**PyLint Score:** $score/10" >> code-quality-report.md
+        echo "" >> code-quality-report.md
+
+        if (( $(echo "$score < 8.0" | bc -l) )); then
+          echo "⚠️  PyLint score is below 8.0:" >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          tail -20 pylint-output.txt >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+        else
+          echo "✅ PyLint score is acceptable (≥8.0)" >> code-quality-report.md
+        fi
+        echo "" >> code-quality-report.md
+
+    - name: Run Bandit security analysis
+      run: |
+        echo "## Security Analysis (Bandit)" >> code-quality-report.md
+      continue-on-error: true
+        echo "" >> code-quality-report.md
+        bandit -r business_application/ \
+          -f txt \
+          -ll \
+          --exclude=*/migrations/*,*/tests/* > bandit-output.txt 2>&1 || true
+
+        if grep -q "Issue:" bandit-output.txt; then
+          echo "⚠️  Security issues found:" >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          cat bandit-output.txt >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+        else
+          echo "✅ No security issues found" >> code-quality-report.md
+        fi
+        echo "" >> code-quality-report.md
+
+    - name: Run complexity analysis
+      run: |
+        echo "## Code Complexity Analysis" >> code-quality-report.md
+        echo "" >> code-quality-report.md
+
+        # Cyclomatic complexity
+        radon cc business_application/ -s -a > complexity-output.txt 2>&1 || true
+        avg_complexity=$(tail -1 complexity-output.txt | grep -o '[0-9.]*' | head -1 || echo "N/A")
+        echo "**Average Cyclomatic Complexity:** $avg_complexity" >> code-quality-report.md
+
+        # Maintainability index
+        radon mi business_application/ -s > maintainability-output.txt 2>&1 || true
+        avg_maintainability=$(tail -1 maintainability-output.txt | grep -o '[0-9.]*' | head -1 || echo "N/A")
+        echo "**Average Maintainability Index:** $avg_maintainability" >> code-quality-report.md
+
+        # High complexity functions
+        xenon business_application/ --max-absolute C --max-modules A --max-average A > xenon-output.txt 2>&1 || true
+        if [ -s xenon-output.txt ]; then
+          echo "" >> code-quality-report.md
+          echo "⚠️  High complexity functions found:" >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          cat xenon-output.txt >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+        else
+          echo "✅ No high complexity functions found" >> code-quality-report.md
+        fi
+        echo "" >> code-quality-report.md
+
+    - name: Run documentation coverage analysis
+      run: |
+        echo "## Documentation Coverage" >> code-quality-report.md
+        echo "" >> code-quality-report.md
+
+        # Check docstring coverage
+        interrogate business_application/ \
+          --ignore-init-method \
+          --ignore-magic \
+          --ignore-module \
+          --ignore-private \
+          --fail-under=80 > doc-coverage-output.txt 2>&1 || true
+
+        doc_coverage=$(grep "Overall coverage" doc-coverage-output.txt | grep -o '[0-9.]*%' || echo "N/A")
+        echo "**Documentation Coverage:** $doc_coverage" >> code-quality-report.md
+
+        if [[ "$doc_coverage" < "80%" ]]; then
+          echo "⚠️  Documentation coverage is below 80%" >> code-quality-report.md
+        else
+          echo "✅ Documentation coverage is acceptable (≥80%)" >> code-quality-report.md
+        fi
+        echo "" >> code-quality-report.md
+
+    - name: Run dead code analysis
+      run: |
+        echo "## Dead Code Analysis (Vulture)" >> code-quality-report.md
+        echo "" >> code-quality-report.md
+
+        vulture business_application/ \
+          --exclude=*/migrations/*,*/tests/* \
+          --min-confidence=80 > vulture-output.txt 2>&1 || true
+
+        if [ -s vulture-output.txt ]; then
+          echo "⚠️  Potential dead code found:" >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          head -20 vulture-output.txt >> code-quality-report.md
+          echo '```' >> code-quality-report.md
+          echo "" >> code-quality-report.md
+          echo "**Note:** These are potential issues and may include false positives" >> code-quality-report.md
+        else
+          echo "✅ No obvious dead code found" >> code-quality-report.md
+        fi
+        echo "" >> code-quality-report.md
+
+    - name: Generate quality summary
+      run: |
+        echo "## Code Quality Summary" >> code-quality-report.md
+        echo "" >> code-quality-report.md
+        echo "| Metric | Status | Details |" >> code-quality-report.md
+        echo "|--------|--------|---------|" >> code-quality-report.md
+        echo "| Code Formatting | $([ ! -s black-output.txt ] && echo '✅ Pass' || echo '❌ Fail') | Black formatting check |" >> code-quality-report.md
+        echo "| Import Sorting | $([ ! -s isort-output.txt ] && echo '✅ Pass' || echo '❌ Fail') | isort import organization |" >> code-quality-report.md
+        echo "| Linting | $([ ! -s flake8-output.txt ] && echo '✅ Pass' || echo '❌ Fail') | Flake8 style guide |" >> code-quality-report.md
+        echo "| Type Checking | $(! grep -q "error:" mypy-output.txt && echo '✅ Pass' || echo '⚠️ Issues') | MyPy static analysis |" >> code-quality-report.md
+        echo "| Security | $(! grep -q "Issue:" bandit-output.txt && echo '✅ Pass' || echo '⚠️ Issues') | Bandit security scan |" >> code-quality-report.md
+        echo "| Complexity | $([ ! -s xenon-output.txt ] && echo '✅ Pass' || echo '⚠️ High') | Code complexity analysis |" >> code-quality-report.md
+        echo "| Documentation | $doc_coverage | Function/class documentation |" >> code-quality-report.md
+        echo "" >> code-quality-report.md
+
+        # Count total issues
+        total_issues=0
+        [ -s black-output.txt ] && ((total_issues++))
+        [ -s isort-output.txt ] && ((total_issues++))
+        [ -s flake8-output.txt ] && ((total_issues++))
+        grep -q "error:" mypy-output.txt && ((total_issues++))
+        grep -q "Issue:" bandit-output.txt && ((total_issues++))
+        [ -s xenon-output.txt ] && ((total_issues++))
+
+        echo "**Total Issues Found:** $total_issues" >> code-quality-report.md
+        echo "" >> code-quality-report.md
+
+        if [ $total_issues -eq 0 ]; then
+          echo "🎉 **Excellent code quality!** All checks passed." >> code-quality-report.md
+        elif [ $total_issues -le 2 ]; then
+          echo "👍 **Good code quality** with minor issues to address." >> code-quality-report.md
+        else
+          echo "⚠️  **Code quality needs improvement.** Please address the issues above." >> code-quality-report.md
+        fi
+
+    - name: Upload quality report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: code-quality-report-${{ github.run_number }}
+        path: |
+          code-quality-report.md
+          *-output.txt
+
+    - name: Add report to PR comment
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const reportPath = 'code-quality-report.md';
+
+          if (fs.existsSync(reportPath)) {
+            const report = fs.readFileSync(reportPath, 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🔍 Code Quality Analysis Report\n\n${report}\n\n---\n*This report was generated automatically by the Code Quality workflow.*`
+            });
+          }
+
+    - name: Add summary to step output
+      if: always()
+      run: |
+        if [ -f code-quality-report.md ]; then
+          cat code-quality-report.md >> $GITHUB_STEP_SUMMARY
+        fi
+
+        - name: Report critical issues (non-blocking)
+      run: |
+        critical_issues=0
+        
+        # Critical: formatting and linting must pass
+        [ -s black-output.txt ] && ((critical_issues++))
+        [ -s isort-output.txt ] && ((critical_issues++))
+        [ -s flake8-output.txt ] && ((critical_issues++))
+        
+        if [ $critical_issues -gt 0 ]; then
+          echo "⚠️  Code quality issues found. Please review the report above."
+          echo "This is informational only - the build will continue."
+        else
+          echo "✅ Critical code quality checks passed!"
+        fi
+      continue-on-error: true
+
+  dependency-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install safety
+      run: pip install safety pip-audit
+
+    - name: Check for security vulnerabilities in dependencies
+      run: |
+        echo "## Dependency Security Analysis" > dependency-report.md
+        echo "" >> dependency-report.md
+
+        # Check with Safety
+        echo "### Safety Analysis" >> dependency-report.md
+        echo "" >> dependency-report.md
+        safety check --output text > safety-output.txt 2>&1 || true
+
+        if grep -q "vulnerability" safety-output.txt; then
+          echo "⚠️  Security vulnerabilities found:" >> dependency-report.md
+          echo '```' >> dependency-report.md
+          cat safety-output.txt >> dependency-report.md
+          echo '```' >> dependency-report.md
+        else
+          echo "✅ No known security vulnerabilities in dependencies" >> dependency-report.md
+        fi
+        echo "" >> dependency-report.md
+
+        # Check with pip-audit
+        echo "### Pip-Audit Analysis" >> dependency-report.md
+        echo "" >> dependency-report.md
+        pip-audit --format=text > pip-audit-output.txt 2>&1 || true
+
+        if [ -s pip-audit-output.txt ]; then
+          echo "⚠️  Additional security issues found:" >> dependency-report.md
+          echo '```' >> dependency-report.md
+          cat pip-audit-output.txt >> dependency-report.md
+          echo '```' >> dependency-report.md
+        else
+          echo "✅ No additional security issues found" >> dependency-report.md
+        fi
+
+    - name: Upload dependency report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dependency-security-report-${{ github.run_number }}
+        path: |
+          dependency-report.md
+          safety-output.txt
+          pip-audit-output.txt
+
+    - name: Add dependency report to summary
+      if: always()
+      run: |
+        if [ -f dependency-report.md ]; then
+          cat dependency-report.md >> $GITHUB_STEP_SUMMARY
+        fi

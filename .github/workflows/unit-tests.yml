@@ -1,0 +1,80 @@
+name: Unit Tests (No Database)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+
+    - name: Install NetBox (minimal)
+      run: |
+        # Install NetBox dependencies only
+        git clone --depth 1 --branch v4.2.7 https://github.com/netbox-community/netbox.git /tmp/netbox
+        pip install -r /tmp/netbox/requirements.txt
+
+    - name: Install plugin dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest pytest-django pytest-cov coverage
+
+    - name: Set environment variables
+      run: |
+        echo "DJANGO_SETTINGS_MODULE=business_application.test_settings" >> $GITHUB_ENV
+        echo "PYTHONPATH=/tmp/netbox/netbox:$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+    - name: Run unit tests (SQLite in-memory)
+      run: |
+        cd /tmp/netbox/netbox
+        # Copy our test settings
+        cp $GITHUB_WORKSPACE/business_application/test_settings.py ./
+        
+        # Run Django migrations with SQLite
+        python manage.py migrate --settings=test_settings
+        
+        # Run unit tests
+        python -m pytest $GITHUB_WORKSPACE/business_application/tests/ -v \
+          --tb=short \
+          --settings=test_settings \
+          --disable-warnings \
+          -x
+
+    - name: Run unit tests with coverage
+      run: |
+        cd /tmp/netbox/netbox
+        coverage run --source='$GITHUB_WORKSPACE/business_application' \
+          -m pytest $GITHUB_WORKSPACE/business_application/tests/ \
+          --settings=test_settings \
+          --disable-warnings
+        coverage report -m
+        coverage xml
+
+    - name: Upload coverage to artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-unit-tests-python-${{ matrix.python-version }}
+        path: /tmp/netbox/netbox/coverage.xml
