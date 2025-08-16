@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
-        netbox-version: ['4.0.11', '4.1.8', '4.2.7']
+        netbox-version: ['4.1.8', '4.2.7']
 
     services:
       postgres:
