@@ -1,0 +1,247 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load business_app_filters %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'plugins:business_application:incident_list' %}">Incidents</a></li>
+<li class="breadcrumb-item"><a href="{{ object.get_absolute_url }}">{{ object.title|truncatechars:50 }}</a></li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-timeline-clock"></i> Incident Timeline
+            </h5>
+            <div class="card-body">
+                {% if timeline_entries %}
+                    <div class="timeline">
+                        {% for entry in timeline_entries %}
+                        <div class="timeline-item">
+                            <div class="timeline-marker">
+                                {% if entry.type == 'incident_created' %}
+                                    <i class="{{ entry.icon }} text-danger"></i>
+                                {% elif entry.type == 'incident_resolved' %}
+                                    <i class="{{ entry.icon }} text-success"></i>
+                                {% elif entry.type == 'event_added' %}
+                                    <i class="{{ entry.icon }} text-warning"></i>
+                                {% elif entry.type == 'event_updated' %}
+                                    <i class="{{ entry.icon }} text-info"></i>
+                                {% elif entry.type == 'services_affected' %}
+                                    <i class="{{ entry.icon }} text-primary"></i>
+                                {% elif entry.type == 'responders_assigned' %}
+                                    <i class="{{ entry.icon }} text-primary"></i>
+                                {% else %}
+                                    <i class="{{ entry.icon }} text-secondary"></i>
+                                {% endif %}
+                            </div>
+                            <div class="timeline-content">
+                                <div class="timeline-header">
+                                    <h6 class="timeline-title mb-1">
+                                        {{ entry.title }}
+                                        {% if entry.type == 'event_added' or entry.type == 'event_updated' %}
+                                            <small class="text-muted">
+                                                from <strong>{{ entry.event_source }}</strong>
+                                            </small>
+                                        {% endif %}
+                                    </h6>
+                                    <small class="text-muted">
+                                        <i class="mdi mdi-clock-outline"></i>
+                                        {{ entry.timestamp|date:"M d, Y H:i:s" }}
+                                    </small>
+                                </div>
+                                <div class="timeline-body">
+                                    <p class="mb-2">{{ entry.description }}</p>
+
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <strong>Status:</strong>
+                                            {% if entry.type == 'incident_created' or entry.type == 'incident_resolved' %}
+                                                {{ entry.status|incident_status_badge }}
+                                            {% else %}
+                                                {% if entry.status == 'triggered' %}
+                                                    <span class="badge bg-danger text-light">
+                                                        <i class="mdi mdi-alert-circle"></i> {{ entry.status|title }}
+                                                    </span>
+                                                {% elif entry.status == 'ok' %}
+                                                    <span class="badge bg-success text-light">
+                                                        <i class="mdi mdi-check-circle"></i> {{ entry.status|upper }}
+                                                    </span>
+                                                {% elif entry.status == 'suppressed' %}
+                                                    <span class="badge bg-secondary text-light">
+                                                        <i class="mdi mdi-volume-off"></i> {{ entry.status|title }}
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-light text-dark">{{ entry.status|title }}</span>
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Severity:</strong>
+                                            {% if entry.type == 'incident_created' or entry.type == 'incident_resolved' %}
+                                                {{ entry.severity|incident_severity_badge }}
+                                            {% else %}
+                                                {% if entry.severity == 'CRITICAL' %}
+                                                    <span class="badge bg-danger text-light">
+                                                        <i class="mdi mdi-alert"></i> Critical
+                                                    </span>
+                                                {% elif entry.severity == 'HIGH' %}
+                                                    <span class="badge bg-warning text-dark">
+                                                        <i class="mdi mdi-alert-outline"></i> High
+                                                    </span>
+                                                {% elif entry.severity == 'MEDIUM' %}
+                                                    <span class="badge bg-info text-light">
+                                                        <i class="mdi mdi-information"></i> Medium
+                                                    </span>
+                                                {% elif entry.severity == 'LOW' %}
+                                                    <span class="badge bg-light text-dark">
+                                                        <i class="mdi mdi-information-outline"></i> Low
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-light text-dark">{{ entry.severity|title }}</span>
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    {% if entry.type == 'services_affected' and entry.services %}
+                                    <div class="mt-3">
+                                        <strong>Affected Services:</strong>
+                                        <ul class="list-unstyled mt-2">
+                                            {% for service in entry.services %}
+                                            <li class="mb-1">
+                                                <a href="{{ service.get_absolute_url }}" class="text-decoration-none">
+                                                    <i class="mdi mdi-server"></i> {{ service.name }}
+                                                </a>
+                                                <small class="text-muted ms-2">({{ service.service_type|title }})</small>
+                                            </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                    {% endif %}
+
+                                    {% if entry.type == 'responders_assigned' and entry.responders %}
+                                    <div class="mt-3">
+                                        <strong>Responders:</strong>
+                                        <ul class="list-unstyled mt-2">
+                                            {% for responder in entry.responders %}
+                                            <li class="mb-1">
+                                                <i class="mdi mdi-account"></i> {{ responder.username }}
+                                                {% if responder.first_name or responder.last_name %}
+                                                <small class="text-muted">({{ responder.first_name }} {{ responder.last_name }})</small>
+                                                {% endif %}
+                                            </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                    {% endif %}
+
+                                    {% if entry.object != object %}
+                                    <div class="mt-2">
+                                        <a href="{{ entry.object.get_absolute_url }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="mdi mdi-open-in-new"></i> View
+                                            {% if entry.type == 'event_added' or entry.type == 'event_updated' %}Event{% else %}Object{% endif %}
+                                        </a>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information"></i>
+                        No timeline events found for this incident.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Custom CSS for timeline -->
+<style>
+.timeline {
+    position: relative;
+    padding: 20px 0;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 30px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #e9ecef;
+}
+
+.timeline-item {
+    position: relative;
+    margin-bottom: 30px;
+    padding-left: 70px;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: 20px;
+    top: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #e9ecef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.timeline-marker i {
+    font-size: 12px;
+}
+
+.timeline-content {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 15px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.timeline-header {
+    border-bottom: 1px solid #f8f9fa;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+}
+
+.timeline-title {
+    font-weight: 600;
+    color: #495057;
+}
+
+.timeline-body {
+    color: #6c757d;
+}
+
+.timeline-item:last-child {
+    margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+    .timeline-item {
+        padding-left: 50px;
+    }
+
+    .timeline::before {
+        left: 20px;
+    }
+
+    .timeline-marker {
+        left: 10px;
+    }
+}
+</style>
+{% endblock %}
