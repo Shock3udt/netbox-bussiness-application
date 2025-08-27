@@ -156,6 +156,126 @@ class EventViewSet(ModelViewSet):
 
         return queryset.order_by('-last_seen_at')
 
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """
+        Bulk delete events by IDs.
+        Expects a JSON payload with 'ids' array.
+        """
+        try:
+            ids = request.data.get('ids', [])
+            if not ids:
+                return Response(
+                    {'error': 'No event IDs provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not isinstance(ids, list):
+                return Response(
+                    {'error': 'IDs must be provided as an array'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate that all IDs are integers
+            try:
+                ids = [int(id) for id in ids]
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': 'All IDs must be valid integers'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Get events that exist and user can delete
+            queryset = self.get_queryset()
+            events_to_delete = queryset.filter(id__in=ids)
+
+            if not events_to_delete.exists():
+                return Response(
+                    {'error': 'No valid events found for the provided IDs'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            deleted_count = events_to_delete.count()
+            events_to_delete.delete()
+
+            logger.info(f'Bulk deleted {deleted_count} events by user {request.user}')
+
+            return Response(
+                {
+                    'success': True,
+                    'deleted_count': deleted_count,
+                    'message': f'Successfully deleted {deleted_count} events'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception(f'Error during bulk delete: {str(e)}')
+            return Response(
+                {'error': 'Failed to delete events', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='bulk-update-status')
+    def bulk_update_status(self, request):
+        """
+        Bulk update event status.
+        Expects a JSON payload with 'ids' array and 'status' field.
+        """
+        try:
+            ids = request.data.get('ids', [])
+            new_status = request.data.get('status')
+
+            if not ids:
+                return Response(
+                    {'error': 'No event IDs provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not new_status:
+                return Response(
+                    {'error': 'No status provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate status value
+            from business_application.models import EventStatus
+            valid_statuses = [choice[0] for choice in EventStatus.CHOICES]
+            if new_status not in valid_statuses:
+                return Response(
+                    {'error': f'Invalid status. Must be one of: {valid_statuses}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            queryset = self.get_queryset()
+            events_to_update = queryset.filter(id__in=ids)
+
+            if not events_to_update.exists():
+                return Response(
+                    {'error': 'No valid events found for the provided IDs'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            updated_count = events_to_update.update(status=new_status)
+
+            logger.info(f'Bulk updated status to {new_status} for {updated_count} events by user {request.user}')
+
+            return Response(
+                {
+                    'success': True,
+                    'updated_count': updated_count,
+                    'message': f'Successfully updated status for {updated_count} events'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception(f'Error during bulk status update: {str(e)}')
+            return Response(
+                {'error': 'Failed to update event status', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class MaintenanceViewSet(ModelViewSet):
     """
@@ -255,6 +375,142 @@ class IncidentViewSet(ModelViewSet):
             queryset = queryset.filter(commander__icontains=commander)
 
         return queryset.order_by('-created_at')
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """
+        Bulk delete incidents by IDs.
+        Expects a JSON payload with 'ids' array.
+        """
+        try:
+            ids = request.data.get('ids', [])
+            if not ids:
+                return Response(
+                    {'error': 'No incident IDs provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            queryset = self.get_queryset()
+            incidents_to_delete = queryset.filter(id__in=ids)
+
+            if not incidents_to_delete.exists():
+                return Response(
+                    {'error': 'No valid incidents found for the provided IDs'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            deleted_count = incidents_to_delete.count()
+            incidents_to_delete.delete()
+
+            logger.info(f'Bulk deleted {deleted_count} incidents by user {request.user}')
+
+            return Response(
+                {
+                    'success': True,
+                    'deleted_count': deleted_count,
+                    'message': f'Successfully deleted {deleted_count} incidents'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception(f'Error during bulk delete: {str(e)}')
+            return Response(
+                {'error': 'Failed to delete incidents', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='bulk-update-status')
+    def bulk_update_status(self, request):
+        """
+        Bulk update incident status.
+        Expects a JSON payload with 'ids' array and 'status' field.
+        """
+        try:
+            ids = request.data.get('ids', [])
+            new_status = request.data.get('status')
+
+            if not ids or not new_status:
+                return Response(
+                    {'error': 'Both ids and status are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate status value
+            from business_application.models import IncidentStatus
+            valid_statuses = [choice[0] for choice in IncidentStatus.CHOICES]
+            if new_status not in valid_statuses:
+                return Response(
+                    {'error': f'Invalid status. Must be one of: {valid_statuses}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            queryset = self.get_queryset()
+            incidents_to_update = queryset.filter(id__in=ids)
+
+            if not incidents_to_update.exists():
+                return Response(
+                    {'error': 'No valid incidents found for the provided IDs'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            updated_count = incidents_to_update.update(status=new_status)
+
+            logger.info(f'Bulk updated status to {new_status} for {updated_count} incidents by user {request.user}')
+
+            return Response(
+                {
+                    'success': True,
+                    'updated_count': updated_count,
+                    'message': f'Successfully updated status for {updated_count} incidents'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception(f'Error during bulk status update: {str(e)}')
+            return Response(
+                {'error': 'Failed to update incident status', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'], url_path='blast-radius')
+    def blast_radius(self, request, pk=None):
+        """
+        Calculate the blast radius (downstream impact) of an incident.
+        Returns all services that could be affected by this incident.
+        """
+        try:
+            incident = self.get_object()
+
+            # Use the correlation engine to calculate blast radius
+            from ..utils.correlation import AlertCorrelationEngine
+            correlation_engine = AlertCorrelationEngine()
+            affected_services = correlation_engine.calculate_blast_radius(incident)
+
+            # Serialize the services
+            service_data = []
+            for service in affected_services:
+                service_data.append({
+                    'id': service.id,
+                    'name': service.name,
+                    'service_type': service.service_type,
+                    'health_status': service.health_status
+                })
+
+            return Response({
+                'incident_id': incident.id,
+                'incident_title': incident.title,
+                'affected_services_count': len(affected_services),
+                'affected_services': service_data
+            })
+
+        except Exception as e:
+            logger.exception(f'Error calculating blast radius: {str(e)}')
+            return Response(
+                {'error': 'Failed to calculate blast radius', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class PagerDutyTemplateViewSet(ModelViewSet):
@@ -573,7 +829,7 @@ class AlertIngestionViewSet(ViewSet):
         """
         if not target_data or not target_data.get('type') or not target_data.get('identifier'):
             logger.warning(f"Invalid target data: {target_data}")
-            return self._get_fallback_target()
+            return self._get_fallback_target(target_data)
 
         target_type = target_data['type']
         identifier = target_data['identifier']
@@ -593,11 +849,17 @@ class AlertIngestionViewSet(ViewSet):
             elif target_type == 'vm':
                 from virtualization.models import VirtualMachine
                 target_obj = VirtualMachine.objects.filter(name=identifier).first()
+                if not target_obj:
+                    logger.info(f"Creating test service for VM {identifier} for alert processing")
+                    target_obj = self._create_test_service(f"vm-{identifier}")
                 if target_obj:
-                    return target_obj, ContentType.objects.get_for_model(VirtualMachine)
+                    return target_obj, ContentType.objects.get_for_model(type(target_obj))
 
             elif target_type == 'service':
                 target_obj = TechnicalService.objects.filter(name=identifier).first()
+                if not target_obj:
+                    logger.info(f"Creating service {identifier} for alert processing")
+                    target_obj = self._create_test_service(identifier)
                 if target_obj:
                     return target_obj, ContentType.objects.get_for_model(TechnicalService)
 
@@ -607,10 +869,10 @@ class AlertIngestionViewSet(ViewSet):
         except Exception as e:
             logger.error(f"Error resolving target {target_type}:{identifier}: {e}")
 
-        logger.warning(f"Could not resolve target {target_type}:{identifier}, using fallback")
-        return self._get_fallback_target()
+        logger.warning(f"Could not resolve target {target_type}:{identifier}, creating fallback target")
+        return self._get_fallback_target(target_data)
 
-    def _get_fallback_target(self):
+    def _get_fallback_target(self, target_data=None):
         """
         Get a fallback target object when the actual target cannot be resolved.
         This ensures we always have a valid object_id and content_type.
@@ -619,13 +881,29 @@ class AlertIngestionViewSet(ViewSet):
             from django.contrib.contenttypes.models import ContentType
             from dcim.models import Device
 
-            fallback_device = Device.objects.first()
-            if fallback_device:
-                return fallback_device, ContentType.objects.get_for_model(Device)
+            # Try to create an appropriate target based on the original target data
+            if target_data:
+                target_type = target_data.get('type', 'service')
+                identifier = target_data.get('identifier', 'unknown-alert-target')
 
+                if target_type == 'device':
+                    fallback_obj = self._create_test_device(identifier)
+                    if fallback_obj:
+                        return fallback_obj, ContentType.objects.get_for_model(Device)
+                else:
+                    # For VM or service types, create a technical service
+                    fallback_obj = self._create_test_service(identifier)
+                    if fallback_obj:
+                        return fallback_obj, ContentType.objects.get_for_model(TechnicalService)
+
+            # If we can't create based on target data, try existing objects
             fallback_service = TechnicalService.objects.first()
             if fallback_service:
                 return fallback_service, ContentType.objects.get_for_model(TechnicalService)
+
+            fallback_device = Device.objects.first()
+            if fallback_device:
+                return fallback_device, ContentType.objects.get_for_model(Device)
 
         except Exception as e:
             logger.error(f"Error getting fallback target: {e}")
@@ -678,6 +956,30 @@ class AlertIngestionViewSet(ViewSet):
 
         except Exception as e:
             logger.error(f"Error creating test device {device_name}: {e}")
+            return None
+
+    def _create_test_service(self, service_name):
+        """
+        Create a minimal test technical service for alert processing.
+        This is used when a service referenced in an alert doesn't exist.
+        """
+        try:
+            # Check if service already exists
+            existing_service = TechnicalService.objects.filter(name=service_name).first()
+            if existing_service:
+                return existing_service
+
+            # Create the service
+            service = TechnicalService.objects.create(
+                name=service_name,
+                service_type='technical'
+            )
+
+            logger.info(f"Created test service: {service_name}")
+            return service
+
+        except Exception as e:
+            logger.error(f"Error creating test service {service_name}: {e}")
             return None
 
     def _process_standard_alert(self, standard_payload):

@@ -181,6 +181,7 @@ class EventSourceTable(NetBoxTable):
         fields = ['name', 'description', 'events_count']
 
 class EventTable(NetBoxTable):
+    pk = tables.CheckBoxColumn()
     message = tables.Column(linkify=True)
     status = tables.TemplateColumn(
         template_code="""
@@ -218,7 +219,7 @@ class EventTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = Event
-        fields = ['message', 'status', 'criticallity', 'event_source', 'last_seen_at', 'obj']
+        fields = ['pk', 'message', 'status', 'criticallity', 'event_source', 'last_seen_at', 'obj']
 
 class MaintenanceTable(NetBoxTable):
     description = tables.Column(linkify=True)
@@ -252,6 +253,7 @@ class ChangeTable(NetBoxTable):
         fields = ['description', 'type', 'created_at', 'obj']
 
 class IncidentTable(NetBoxTable):
+    pk = tables.CheckBoxColumn()
     title = tables.Column(linkify=True)
     status = tables.TemplateColumn(
         template_code="""
@@ -276,4 +278,4 @@ class IncidentTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = Incident
-        fields = ['title', 'status', 'severity', 'created_at', 'resolved_at', 'responders_count', 'affected_services_count', 'events_count', 'commander']
+        fields = ['pk', 'title', 'status', 'severity', 'created_at', 'resolved_at', 'responders_count', 'affected_services_count', 'events_count', 'commander']

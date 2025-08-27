@@ -42,6 +42,10 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'service_type',
+            'devices',
+            'vms',
+            'clusters',
+            'business_apps',
             'business_apps_count',
             'vms_count',
             'devices_count',
@@ -225,7 +229,7 @@ class PagerDutyTemplateSerializer(serializers.ModelSerializer):
     Serializer for the PagerDutyTemplate model.
     """
     services_using_template = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = PagerDutyTemplate
         fields = [
