@@ -308,6 +308,124 @@ class IncidentEditView(generic.ObjectEditView):
 class IncidentDeleteView(generic.ObjectDeleteView):
     queryset = Incident.objects.all()
 
+@register_model_view(Incident, name='timeline', path='timeline')
+class IncidentTimelineView(generic.ObjectView):
+    queryset = Incident.objects.all()
+    template_name = 'business_application/incident/timeline.html'
+
+    tab = ViewTab(
+        label='Timeline',
+        badge=lambda obj: obj.events.count(),
+        permission='business_application.view_incident',
+        weight=100
+    )
+
+    def get(self, request, pk):
+        obj = self.get_object(pk=pk)
+
+        # Get all events related to this incident
+        events = obj.events.all().order_by('created_at')
+
+        # Create timeline entries for events and their state changes
+        timeline_entries = []
+
+        # Add incident creation as first timeline entry
+        timeline_entries.append({
+            'timestamp': obj.created_at,
+            'type': 'incident_created',
+            'title': 'Incident Created',
+            'description': f'Incident "{obj.title}" was created',
+            'severity': obj.severity,
+            'status': obj.status,
+            'object': obj,
+            'icon': 'mdi-alert-circle'
+        })
+
+        # Add events to timeline
+        for event in events:
+            timeline_entries.append({
+                'timestamp': event.created_at,
+                'type': 'event_added',
+                'title': 'Event Added to Incident',
+                'description': event.message,
+                'severity': event.criticallity,
+                'status': event.status,
+                'object': event,
+                'icon': 'mdi-plus-circle',
+                'event_source': event.event_source.name if event.event_source else 'Unknown'
+            })
+
+            # If event was updated after creation, add update entry
+            if event.updated_at > event.created_at:
+                timeline_entries.append({
+                    'timestamp': event.updated_at,
+                    'type': 'event_updated',
+                    'title': 'Event Updated',
+                    'description': f'Event status changed: {event.message}',
+                    'severity': event.criticallity,
+                    'status': event.status,
+                    'object': event,
+                    'icon': 'mdi-pencil-circle',
+                    'event_source': event.event_source.name if event.event_source else 'Unknown'
+                })
+
+        # Add incident status changes if resolved
+        if obj.resolved_at:
+            timeline_entries.append({
+                'timestamp': obj.resolved_at,
+                'type': 'incident_resolved',
+                'title': 'Incident Resolved',
+                'description': f'Incident "{obj.title}" was resolved',
+                'severity': obj.severity,
+                'status': 'resolved',
+                'object': obj,
+                'icon': 'mdi-check-circle'
+            })
+
+        # Add affected services information
+        affected_services = obj.affected_services.all()
+        if affected_services:
+            timeline_entries.append({
+                'timestamp': obj.created_at,
+                'type': 'services_affected',
+                'title': 'Affected Services',
+                'description': f'{affected_services.count()} service(s) affected by this incident',
+                'severity': obj.severity,
+                'status': obj.status,
+                'object': obj,
+                'icon': 'mdi-server-network',
+                'services': list(affected_services)
+            })
+
+        # Add responders if any
+        responders = obj.responders.all()
+        if responders:
+            timeline_entries.append({
+                'timestamp': obj.created_at,
+                'type': 'responders_assigned',
+                'title': 'Responders Assigned',
+                'description': f'{responders.count()} responder(s) assigned to this incident',
+                'severity': obj.severity,
+                'status': obj.status,
+                'object': obj,
+                'icon': 'mdi-account-multiple',
+                'responders': list(responders)
+            })
+
+        # Sort timeline entries by timestamp
+        timeline_entries.sort(key=lambda x: x['timestamp'])
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'timeline_entries': timeline_entries,
+                'events': events,
+            }
+        )
+
 # ServiceDependency Views
 class ServiceDependencyListView(generic.ObjectListView):
     queryset = ServiceDependency.objects.all()
