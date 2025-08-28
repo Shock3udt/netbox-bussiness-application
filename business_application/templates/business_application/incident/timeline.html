@@ -175,7 +175,7 @@
     top: 0;
     bottom: 0;
     width: 2px;
-    background: #e9ecef;
+    background: var(--bs-border-color, #495057);
 }
 
 .timeline-item {
@@ -191,8 +191,8 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: #fff;
-    border: 2px solid #e9ecef;
+    background: var(--bs-body-bg, #212529);
+    border: 2px solid var(--bs-border-color, #495057);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -204,30 +204,90 @@
 }
 
 .timeline-content {
-    background: #fff;
-    border: 1px solid #e9ecef;
+    background: var(--bs-gray-800, #343a40);
+    border: 1px solid var(--bs-border-color, #495057);
     border-radius: 6px;
     padding: 15px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    color: var(--bs-body-color, #dee2e6);
 }
 
 .timeline-header {
-    border-bottom: 1px solid #f8f9fa;
+    border-bottom: 1px solid var(--bs-border-color, #495057);
     padding-bottom: 8px;
     margin-bottom: 12px;
 }
 
 .timeline-title {
     font-weight: 600;
-    color: #495057;
+    color: var(--bs-body-color, #dee2e6);
 }
 
 .timeline-body {
-    color: #6c757d;
+    color: var(--bs-secondary-color, #adb5bd);
+}
+
+.timeline-body strong {
+    color: var(--bs-body-color, #dee2e6);
+}
+
+.timeline-body a {
+    color: var(--bs-link-color, #6ea8fe);
+}
+
+.timeline-body a:hover {
+    color: var(--bs-link-hover-color, #8bb9fe);
 }
 
 .timeline-item:last-child {
     margin-bottom: 0;
+}
+
+/* Dark theme specific overrides */
+[data-bs-theme="dark"] .timeline-content {
+    background: #2b3035;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .timeline-marker {
+    background: #212529;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .timeline::before {
+    background: #495057;
+}
+
+[data-bs-theme="dark"] .timeline-header {
+    border-bottom-color: #495057;
+}
+
+/* Light theme fallback */
+[data-bs-theme="light"] .timeline-content {
+    background: #f8f9fa;
+    border-color: #dee2e6;
+    color: #212529;
+}
+
+[data-bs-theme="light"] .timeline-marker {
+    background: #ffffff;
+    border-color: #dee2e6;
+}
+
+[data-bs-theme="light"] .timeline::before {
+    background: #dee2e6;
+}
+
+[data-bs-theme="light"] .timeline-title {
+    color: #212529;
+}
+
+[data-bs-theme="light"] .timeline-body {
+    color: #6c757d;
+}
+
+[data-bs-theme="light"] .timeline-header {
+    border-bottom-color: #dee2e6;
 }
 
 @media (max-width: 768px) {
