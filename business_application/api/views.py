@@ -907,12 +907,7 @@ class AlertIngestionViewSet(ViewSet):
                     return target_obj, ContentType.objects.get_for_model(VirtualMachine)
 
             elif target_type == 'service':
-                # Handle GitLab service naming convention: "gitlab: <path_with_namespace>"
                 target_obj = TechnicalService.objects.filter(name=identifier).first()
-                if not target_obj and identifier.startswith('gitlab:'):
-                    # Only auto-create GitLab services
-                    logger.info(f"Creating GitLab service {identifier} for alert processing")
-                    target_obj = self._create_test_service(identifier)
                 if target_obj:
                     return target_obj, ContentType.objects.get_for_model(TechnicalService)
 
@@ -926,78 +921,6 @@ class AlertIngestionViewSet(ViewSet):
         return None, None
 
 
-
-    def _create_test_device(self, device_name):
-        """
-        Create a minimal test device for alert processing.
-        This is used when a device referenced in an alert doesn't exist.
-        """
-        try:
-            from dcim.models import Device, DeviceType, DeviceRole, Site, Manufacturer
-
-            manufacturer, _ = Manufacturer.objects.get_or_create(
-                name='Unknown',
-                defaults={'name': 'Unknown', 'slug': 'unknown'}
-            )
-
-            device_type, _ = DeviceType.objects.get_or_create(
-                model='Unknown Device',
-                manufacturer=manufacturer,
-                defaults={
-                    'model': 'Unknown Device',
-                    'slug': 'unknown-device',
-                    'manufacturer': manufacturer
-                }
-            )
-
-            device_role, _ = DeviceRole.objects.get_or_create(
-                name='Alert Target',
-                defaults={'name': 'Alert Target', 'slug': 'alert-target'}
-            )
-
-            site, _ = Site.objects.get_or_create(
-                name='Unknown Site',
-                defaults={'name': 'Unknown Site', 'slug': 'unknown-site'}
-            )
-
-            # Create the device
-            device = Device.objects.create(
-                name=device_name,
-                device_type=device_type,
-                device_role=device_role,
-                site=site
-            )
-
-            logger.info(f"Created test device: {device_name}")
-            return device
-
-        except Exception as e:
-            logger.error(f"Error creating test device {device_name}: {e}")
-            return None
-
-    def _create_test_service(self, service_name):
-        """
-        Create a minimal test technical service for alert processing.
-        This is used when a service referenced in an alert doesn't exist.
-        """
-        try:
-            # Check if service already exists
-            existing_service = TechnicalService.objects.filter(name=service_name).first()
-            if existing_service:
-                return existing_service
-
-            # Create the service
-            service = TechnicalService.objects.create(
-                name=service_name,
-                service_type='technical'
-            )
-
-            logger.info(f"Created test service: {service_name}")
-            return service
-
-        except Exception as e:
-            logger.error(f"Error creating test service {service_name}: {e}")
-            return None
 
     def _process_standard_alert(self, standard_payload):
         """
