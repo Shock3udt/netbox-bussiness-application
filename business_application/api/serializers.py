@@ -111,6 +111,8 @@ class EventSerializer(serializers.ModelSerializer):
     """
     event_source_name = serializers.CharField(source='event_source.name', read_only=True)
     content_type_name = serializers.CharField(source='content_type.model', read_only=True)
+    has_valid_target = serializers.ReadOnlyField()
+    target_display = serializers.ReadOnlyField()
 
     class Meta:
         model = Event
@@ -129,6 +131,9 @@ class EventSerializer(serializers.ModelSerializer):
             'event_source',
             'event_source_name',
             'raw',
+            'is_valid',
+            'has_valid_target',
+            'target_display',
             'created',
             'last_updated',
         ]
@@ -411,7 +416,7 @@ class GitLabPipelineSerializer(serializers.Serializer):
     project = serializers.DictField()
     commit = serializers.DictField(required=False)
     user = serializers.DictField(required=False)
-    
+
     def validate_object_kind(self, value):
         """Validate that this is a pipeline event."""
         if value != 'pipeline':
@@ -419,7 +424,7 @@ class GitLabPipelineSerializer(serializers.Serializer):
                 "This endpoint only accepts pipeline events"
             )
         return value
-    
+
     def validate_object_attributes(self, value):
         """Validate pipeline attributes contain required fields."""
         required_fields = ['id', 'status', 'source']
@@ -429,7 +434,7 @@ class GitLabPipelineSerializer(serializers.Serializer):
                     f"Missing required field in object_attributes: {field}"
                 )
         return value
-    
+
     def validate_project(self, value):
         """Validate project contains required fields."""
         if 'path_with_namespace' not in value:

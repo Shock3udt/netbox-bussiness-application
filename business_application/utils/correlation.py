@@ -36,6 +36,13 @@ class AlertCorrelationEngine:
         3. Returns None if no correlation is needed
         """
         try:
+            # Skip correlation for invalid events
+            if not event.is_valid or not event.has_valid_target:
+                self.logger.warning(
+                    f"Skipping correlation for invalid event {event.id}"
+                )
+                return None
+
             target_object = self._resolve_target(event)
             if not target_object:
                 self.logger.warning(

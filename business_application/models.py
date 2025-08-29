@@ -99,12 +99,12 @@ class PagerDutyTemplate(NetBoxModel):
         choices=PagerDutyTemplateTypeChoices,
         help_text='Type of PagerDuty template (Service Definition or Router Rule)'
     )
-    
+
     # PagerDuty Configuration
     pagerduty_config = models.JSONField(
         help_text='PagerDuty service configuration in API format'
     )
-    
+
     class Meta:
         ordering = ['name']
         verbose_name = 'PagerDuty Template'
@@ -117,18 +117,18 @@ class PagerDutyTemplate(NetBoxModel):
         """Validate PagerDuty configuration structure"""
         if not self.pagerduty_config:
             return False, ['PagerDuty configuration is required for templates']
-        
+
         errors = []
-        
+
         # Only apply strict validation to service definition templates
         # Router rules can have more flexible configuration
         if self.template_type == PagerDutyTemplateTypeChoices.SERVICE_DEFINITION:
             required_fields = ['name', 'description', 'status', 'escalation_policy']
-            
+
             for field in required_fields:
                 if field not in self.pagerduty_config:
                     errors.append(f"Missing required field for service definition: {field}")
-            
+
             # Validate escalation_policy structure for service definitions
             if 'escalation_policy' in self.pagerduty_config:
                 ep = self.pagerduty_config['escalation_policy']
@@ -139,7 +139,7 @@ class PagerDutyTemplate(NetBoxModel):
                         errors.append("escalation_policy must have an 'id' field")
                     if 'type' not in ep:
                         errors.append("escalation_policy must have a 'type' field")
-            
+
             # Validate incident_urgency_rule structure for service definitions
             if 'incident_urgency_rule' in self.pagerduty_config:
                 iur = self.pagerduty_config['incident_urgency_rule']
@@ -150,12 +150,12 @@ class PagerDutyTemplate(NetBoxModel):
                         errors.append("incident_urgency_rule must have a 'type' field")
                     if iur.get('type') == 'constant' and 'urgency' not in iur:
                         errors.append("incident_urgency_rule with type 'constant' must have 'urgency' field")
-        
+
         elif self.template_type == PagerDutyTemplateTypeChoices.ROUTER_RULE:
             # Router rules have minimal validation - just check it's valid JSON
             if not isinstance(self.pagerduty_config, dict):
                 errors.append("Router rule configuration must be a valid JSON object")
-        
+
         # Validate alert_grouping_parameters structure if present
         if 'alert_grouping_parameters' in self.pagerduty_config:
             agp = self.pagerduty_config['alert_grouping_parameters']
@@ -166,9 +166,9 @@ class PagerDutyTemplate(NetBoxModel):
                     errors.append("alert_grouping_parameters must have a 'type' field")
                 if agp.get('type') == 'content_based' and 'config' not in agp:
                     errors.append("alert_grouping_parameters with type 'content_based' must have 'config' field")
-        
+
         return len(errors) == 0, errors
-    
+
     def clean(self):
         """Custom validation for the model"""
         super().clean()
@@ -206,7 +206,7 @@ class TechnicalService(NetBoxModel):
     clusters         = models.ManyToManyField(Cluster,
                                               related_name='technical_services',
                                               blank=True)
-    
+
     # PagerDuty Integration via Templates
     pagerduty_service_definition = models.ForeignKey(
         'PagerDutyTemplate',
@@ -411,39 +411,39 @@ class TechnicalService(NetBoxModel):
     def has_pagerduty_integration(self):
         """Check if this service has complete PagerDuty integration (both templates required)"""
         return bool(self.pagerduty_service_definition and self.pagerduty_router_rule)
-    
+
     @property
     def has_partial_pagerduty_integration(self):
         """Check if this service has partial PagerDuty integration (only one template)"""
         return bool((self.pagerduty_service_definition or self.pagerduty_router_rule) and not self.has_pagerduty_integration)
-    
+
     def get_pagerduty_service_data(self):
         """Get PagerDuty service definition data in API format"""
         if not self.pagerduty_service_definition:
             return None
         return self.pagerduty_service_definition.pagerduty_config
-    
+
     def get_pagerduty_router_data(self):
         """Get PagerDuty router rule data in API format"""
         if not self.pagerduty_router_rule:
             return None
         return self.pagerduty_router_rule.pagerduty_config
-    
+
     @property
     def pagerduty_config(self):
         """Backward compatibility property for templates - returns the service definition config"""
         return self.get_pagerduty_service_data()
-    
+
     @property
     def pagerduty_template_name(self):
         """Get the name of the PagerDuty service definition template (backward compatibility)"""
         return self.pagerduty_service_definition.name if self.pagerduty_service_definition else None
-    
+
     @property
     def pagerduty_service_definition_name(self):
         """Get the name of the PagerDuty service definition template"""
         return self.pagerduty_service_definition.name if self.pagerduty_service_definition else None
-    
+
     @property
     def pagerduty_router_rule_name(self):
         """Get the name of the PagerDuty router rule template"""
@@ -531,8 +531,8 @@ class Event(NetBoxModel):
     last_seen_at  = models.DateTimeField()
     updated_at    = models.DateTimeField(auto_now=True)
     # polymorphic link to any core or plugin object
-    content_type  = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id     = models.PositiveIntegerField()
+    content_type  = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, blank=True)
+    object_id     = models.PositiveIntegerField(null=True, blank=True)
     obj           = GenericForeignKey('content_type', 'object_id')
     message       = models.CharField(max_length=255)
     dedup_id      = models.CharField(max_length=128, db_index=True)
@@ -541,6 +541,21 @@ class Event(NetBoxModel):
     event_source  = models.ForeignKey('EventSource', on_delete=models.SET_NULL,
                                       null=True, blank=True)
     raw           = models.JSONField()
+    is_valid      = models.BooleanField(default=True, help_text='False if target object could not be found')
+
+    @property
+    def has_valid_target(self):
+        """Check if this event has a valid target object."""
+        return self.is_valid and self.content_type and self.object_id
+
+    @property
+    def target_display(self):
+        """Get a display string for the target object."""
+        if not self.has_valid_target:
+            return "Invalid Target"
+        if self.obj:
+            return str(self.obj)
+        return f"{self.content_type.model} (ID: {self.object_id})"
 
     def get_absolute_url(self):
         return reverse('plugins:business_application:event_detail', args=[self.pk])

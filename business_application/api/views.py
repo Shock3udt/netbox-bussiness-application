@@ -826,6 +826,17 @@ class AlertIngestionViewSet(ViewSet):
             existing_event.status = alert_data['status']
             existing_event.raw = alert_data.get('raw_data', {})
             existing_event.criticallity = self._map_severity_to_criticality(alert_data['severity'])
+
+            # Re-check target validity for existing events
+            if not existing_event.has_valid_target:
+                target_obj, content_type = self._resolve_target(alert_data.get('target', {}))
+                if target_obj and content_type:
+                    # Target is now available - make event valid
+                    existing_event.object_id = target_obj.id
+                    existing_event.content_type = content_type
+                    existing_event.is_valid = True
+                    logger.info(f"Event {existing_event.id} target resolved, marked as valid")
+
             existing_event.save()
             logger.info(f"Updated existing event {existing_event.id}")
             return existing_event
@@ -834,13 +845,7 @@ class AlertIngestionViewSet(ViewSet):
 
             target_obj, content_type = self._resolve_target(alert_data.get('target', {}))
 
-            if not target_obj or not content_type:
-                raise ValueError(
-                    f"Could not resolve target object for alert. "
-                    f"Target: {alert_data.get('target', {})}. "
-                    f"Ensure at least one Device or TechnicalService exists in the system."
-                )
-
+            # Prepare base event data
             event_data = {
                 'dedup_id': alert_data['dedup_id'],
                 'message': alert_data['message'],
@@ -849,12 +854,29 @@ class AlertIngestionViewSet(ViewSet):
                 'raw': alert_data.get('raw_data', {}),
                 'last_seen_at': current_time,
                 'event_source': self._get_or_create_event_source(alert_data['source']),
-                'object_id': target_obj.id,
-                'content_type': content_type,
             }
 
+            # Handle target resolution
+            if target_obj and content_type:
+                # Valid target found
+                event_data.update({
+                    'object_id': target_obj.id,
+                    'content_type': content_type,
+                    'is_valid': True,
+                })
+                logger.info(f"Creating event with valid target: {target_obj}")
+            else:
+                # No valid target found - create invalid event
+                event_data.update({
+                    'object_id': None,
+                    'content_type': None,
+                    'is_valid': False,
+                })
+                logger.warning(f"Creating invalid event - could not resolve target: {alert_data.get('target', {})}")
+
             event = Event.objects.create(**event_data)
-            logger.info(f"Created new event {event.id} for {target_obj}")
+            target_info = target_obj if target_obj else "no valid target"
+            logger.info(f"Created new event {event.id} for {target_info}")
             return event
 
     def _resolve_target(self, target_data):
@@ -864,7 +886,7 @@ class AlertIngestionViewSet(ViewSet):
         """
         if not target_data or not target_data.get('type') or not target_data.get('identifier'):
             logger.warning(f"Invalid target data: {target_data}")
-            return self._get_fallback_target(target_data)
+            return None, None
 
         target_type = target_data['type']
         identifier = target_data['identifier']
@@ -875,26 +897,21 @@ class AlertIngestionViewSet(ViewSet):
             if target_type == 'device':
                 from dcim.models import Device
                 target_obj = Device.objects.filter(name=identifier).first()
-                if not target_obj:
-                    logger.info(f"Creating device {identifier} for alert processing")
-                    target_obj = self._create_test_device(identifier)
                 if target_obj:
                     return target_obj, ContentType.objects.get_for_model(Device)
 
             elif target_type == 'vm':
                 from virtualization.models import VirtualMachine
                 target_obj = VirtualMachine.objects.filter(name=identifier).first()
-                if not target_obj:
-                    logger.info(f"Creating test service for VM {identifier} for alert processing")
-                    target_obj = self._create_test_service(f"vm-{identifier}")
                 if target_obj:
-                    return target_obj, ContentType.objects.get_for_model(type(target_obj))
+                    return target_obj, ContentType.objects.get_for_model(VirtualMachine)
 
             elif target_type == 'service':
                 # Handle GitLab service naming convention: "gitlab: <path_with_namespace>"
                 target_obj = TechnicalService.objects.filter(name=identifier).first()
-                if not target_obj:
-                    logger.info(f"Creating service {identifier} for alert processing")
+                if not target_obj and identifier.startswith('gitlab:'):
+                    # Only auto-create GitLab services
+                    logger.info(f"Creating GitLab service {identifier} for alert processing")
                     target_obj = self._create_test_service(identifier)
                 if target_obj:
                     return target_obj, ContentType.objects.get_for_model(TechnicalService)
@@ -905,46 +922,10 @@ class AlertIngestionViewSet(ViewSet):
         except Exception as e:
             logger.error(f"Error resolving target {target_type}:{identifier}: {e}")
 
-        logger.warning(f"Could not resolve target {target_type}:{identifier}, creating fallback target")
-        return self._get_fallback_target(target_data)
-
-    def _get_fallback_target(self, target_data=None):
-        """
-        Get a fallback target object when the actual target cannot be resolved.
-        This ensures we always have a valid object_id and content_type.
-        """
-        try:
-            from django.contrib.contenttypes.models import ContentType
-            from dcim.models import Device
-
-            # Try to create an appropriate target based on the original target data
-            if target_data:
-                target_type = target_data.get('type', 'service')
-                identifier = target_data.get('identifier', 'unknown-alert-target')
-
-                if target_type == 'device':
-                    fallback_obj = self._create_test_device(identifier)
-                    if fallback_obj:
-                        return fallback_obj, ContentType.objects.get_for_model(Device)
-                else:
-                    # For VM or service types, create a technical service
-                    fallback_obj = self._create_test_service(identifier)
-                    if fallback_obj:
-                        return fallback_obj, ContentType.objects.get_for_model(TechnicalService)
-
-            # If we can't create based on target data, try existing objects
-            fallback_service = TechnicalService.objects.first()
-            if fallback_service:
-                return fallback_service, ContentType.objects.get_for_model(TechnicalService)
-
-            fallback_device = Device.objects.first()
-            if fallback_device:
-                return fallback_device, ContentType.objects.get_for_model(Device)
-
-        except Exception as e:
-            logger.error(f"Error getting fallback target: {e}")
-
+        logger.warning(f"Could not resolve target {target_type}:{identifier}, will create invalid event")
         return None, None
+
+
 
     def _create_test_device(self, device_name):
         """
@@ -1107,23 +1088,23 @@ class AlertIngestionViewSet(ViewSet):
         project = gitlab_data['project']
         commit = gitlab_data.get('commit', {})
         user = gitlab_data.get('user', {})
-        
+
         # Map GitLab pipeline status to event status and severity
         pipeline_status = object_attributes['status']
         event_status, event_severity = self._map_gitlab_pipeline_status(pipeline_status)
-        
+
         # Generate message with pipeline information
         pipeline_id = object_attributes['id']
         project_path = project['path_with_namespace']
         commit_message = commit.get('message', 'No commit message')
         commit_author = commit.get('author_name', 'Unknown')
-        
+
         message = f"GitLab pipeline {pipeline_status} for {project_path}"
         if commit_message and commit_message != 'No commit message':
             message += f" - {commit_message[:100]}"
         if commit_author and commit_author != 'Unknown':
             message += f" by {commit_author}"
-        
+
         return {
             "source": "gitlab",
             "timestamp": timezone.now(),  # GitLab webhook doesn't always include finished_at
@@ -1177,9 +1158,9 @@ class AlertIngestionViewSet(ViewSet):
         Map GitLab pipeline status to event status and severity.
         Returns tuple of (event_status, event_severity).
         """
-        # GitLab pipeline statuses: created, waiting_for_resource, preparing, pending, running, 
+        # GitLab pipeline statuses: created, waiting_for_resource, preparing, pending, running,
         # success, failed, canceled, skipped, manual, scheduled
-        
+
         status_mapping = {
             'success': ('ok', 'low'),
             'failed': ('triggered', 'critical'),
@@ -1193,7 +1174,7 @@ class AlertIngestionViewSet(ViewSet):
             'manual': ('triggered', 'low'),
             'scheduled': ('triggered', 'low'),
         }
-        
+
         # Default for any unknown status
         return status_mapping.get(pipeline_status, ('triggered', 'low'))
 
