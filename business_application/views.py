@@ -1,6 +1,6 @@
 from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, get_object_or_404
 from django.views.generic import TemplateView
 from django.db.models import Q
 from django.utils import timezone
@@ -23,7 +23,8 @@ from .filtersets import (
     BusinessApplicationFilter, TechnicalServiceFilter, ServiceDependencyFilter, EventSourceFilter, EventFilter,
     MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter, PagerDutyTemplateFilter
 )
-from django.http import HttpResponse, JsonResponse
+from django.http import JsonResponse
+from dcim.models import Device
 
 # BusinessApplication Views
 class BusinessApplicationListView(generic.ObjectListView):
@@ -423,6 +424,100 @@ class IncidentTimelineView(generic.ObjectView):
                 'tab': self.tab,
                 'timeline_entries': timeline_entries,
                 'events': events,
+            }
+        )
+
+@register_model_view(Device, name='events', path='events')
+class DeviceEventsView(generic.ObjectView):
+    queryset = Device.objects.all()
+    template_name = 'business_application/device/events.html'
+
+    tab = ViewTab(
+        label='Events',
+        badge=lambda obj: Event.objects.filter(content_type__model='device', object_id=obj.pk).count(),
+        permission='dcim.view_device',
+        weight=500
+    )
+
+    def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
+        obj = self.get_object(pk=pk)
+
+        # Get device content type
+        device_ct = ContentType.objects.get_for_model(Device)
+
+        # Get all events related to this device
+        events = Event.objects.filter(
+            content_type=device_ct,
+            object_id=obj.pk
+        ).order_by('-created_at')
+
+        # Get related technical services for this device
+        related_services = obj.technical_services.all()
+
+        # Get incidents that affect services related to this device
+        related_incidents = Incident.objects.filter(
+            affected_services__in=related_services
+        ).distinct()
+
+        # Create event timeline entries
+        timeline_entries = []
+
+        # Add events to timeline
+        for event in events:
+            timeline_entries.append({
+                'timestamp': event.created_at,
+                'type': 'event',
+                'title': 'Event Recorded',
+                'description': event.message,
+                'severity': event.criticallity,
+                'status': event.status,
+                'object': event,
+                'icon': 'mdi-alert-circle-outline',
+                'event_source': event.event_source.name if event.event_source else 'Unknown',
+                'dedup_id': event.dedup_id
+            })
+
+            # If event was updated after creation, add update entry
+            if event.updated_at > event.created_at:
+                timeline_entries.append({
+                    'timestamp': event.updated_at,
+                    'type': 'event_updated',
+                    'title': 'Event Updated',
+                    'description': f'Event status changed: {event.message}',
+                    'severity': event.criticallity,
+                    'status': event.status,
+                    'object': event,
+                    'icon': 'mdi-pencil-circle-outline',
+                    'event_source': event.event_source.name if event.event_source else 'Unknown',
+                    'dedup_id': event.dedup_id
+                })
+
+        # Sort timeline entries by timestamp (newest first)
+        timeline_entries.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        # Get event statistics
+        event_stats = {
+            'total': events.count(),
+            'triggered': events.filter(status='triggered').count(),
+            'ok': events.filter(status='ok').count(),
+            'suppressed': events.filter(status='suppressed').count(),
+            'critical': events.filter(criticallity='CRITICAL').count(),
+            'warning': events.filter(criticallity='WARNING').count(),
+            'info': events.filter(criticallity='INFO').count(),
+        }
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'timeline_entries': timeline_entries,
+                'events': events,
+                'related_services': related_services,
+                'related_incidents': related_incidents,
+                'event_stats': event_stats,
             }
         )
 
