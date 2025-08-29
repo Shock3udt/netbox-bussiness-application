@@ -401,6 +401,44 @@ class EmailAlertSerializer(serializers.Serializer):
 
         return data
 
+class GitLabPipelineSerializer(serializers.Serializer):
+    """
+    Serializer for GitLab pipeline webhook payload.
+    Based on GitLab Pipeline Events webhook format.
+    """
+    object_kind = serializers.CharField()
+    object_attributes = serializers.DictField()
+    project = serializers.DictField()
+    commit = serializers.DictField(required=False)
+    user = serializers.DictField(required=False)
+    
+    def validate_object_kind(self, value):
+        """Validate that this is a pipeline event."""
+        if value != 'pipeline':
+            raise serializers.ValidationError(
+                "This endpoint only accepts pipeline events"
+            )
+        return value
+    
+    def validate_object_attributes(self, value):
+        """Validate pipeline attributes contain required fields."""
+        required_fields = ['id', 'status', 'source']
+        for field in required_fields:
+            if field not in value:
+                raise serializers.ValidationError(
+                    f"Missing required field in object_attributes: {field}"
+                )
+        return value
+    
+    def validate_project(self, value):
+        """Validate project contains required fields."""
+        if 'path_with_namespace' not in value:
+            raise serializers.ValidationError(
+                "Missing required field in project: path_with_namespace"
+            )
+        return value
+
+
 class WebhookSignatureSerializer(serializers.Serializer):
     """
     Base serializer for webhook signature validation.

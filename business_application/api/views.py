@@ -19,6 +19,7 @@ from business_application.api.serializers import (
     CapacitorAlertSerializer,
     SignalFXAlertSerializer,
     EmailAlertSerializer,
+    GitLabPipelineSerializer,
     PagerDutyTemplateSerializer
 )
 from dcim.models import Device
@@ -758,6 +759,40 @@ class AlertIngestionViewSet(ViewSet):
 
         return self._process_standard_alert(standard_payload)
 
+    @action(detail=False, methods=['post'], url_path='gitlab')
+    def gitlab_pipeline(self, request):
+        """
+        GitLab pipeline webhook endpoint.
+        Transforms GitLab pipeline events to standard format.
+        Filters out merge request pipelines as requested.
+        """
+        serializer = GitLabPipelineSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            logger.error(f"Invalid GitLab pipeline event: {serializer.errors}")
+            return Response(
+                {"errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Filter out merge request pipelines
+        pipeline_source = serializer.validated_data['object_attributes'].get('source')
+        if pipeline_source == 'merge_request_event':
+            logger.info("Ignoring merge request pipeline event")
+            return Response(
+                {
+                    "status": "ignored",
+                    "message": "Merge request pipelines are ignored"
+                },
+                status=status.HTTP_200_OK
+            )
+
+        standard_payload = self._transform_gitlab_pipeline(
+            serializer.validated_data
+        )
+
+        return self._process_standard_alert(standard_payload)
+
     def _clean_raw_data(self, raw_data):
         """
         Ensure raw data is JSON serializable and return as dict.
@@ -856,6 +891,7 @@ class AlertIngestionViewSet(ViewSet):
                     return target_obj, ContentType.objects.get_for_model(type(target_obj))
 
             elif target_type == 'service':
+                # Handle GitLab service naming convention: "gitlab: <path_with_namespace>"
                 target_obj = TechnicalService.objects.filter(name=identifier).first()
                 if not target_obj:
                     logger.info(f"Creating service {identifier} for alert processing")
@@ -1063,6 +1099,45 @@ class AlertIngestionViewSet(ViewSet):
             "raw_data": self._clean_raw_data(email_data)
         }
 
+    def _transform_gitlab_pipeline(self, gitlab_data):
+        """
+        Transform GitLab pipeline webhook format to standard format.
+        """
+        object_attributes = gitlab_data['object_attributes']
+        project = gitlab_data['project']
+        commit = gitlab_data.get('commit', {})
+        user = gitlab_data.get('user', {})
+        
+        # Map GitLab pipeline status to event status and severity
+        pipeline_status = object_attributes['status']
+        event_status, event_severity = self._map_gitlab_pipeline_status(pipeline_status)
+        
+        # Generate message with pipeline information
+        pipeline_id = object_attributes['id']
+        project_path = project['path_with_namespace']
+        commit_message = commit.get('message', 'No commit message')
+        commit_author = commit.get('author_name', 'Unknown')
+        
+        message = f"GitLab pipeline {pipeline_status} for {project_path}"
+        if commit_message and commit_message != 'No commit message':
+            message += f" - {commit_message[:100]}"
+        if commit_author and commit_author != 'Unknown':
+            message += f" by {commit_author}"
+        
+        return {
+            "source": "gitlab",
+            "timestamp": timezone.now(),  # GitLab webhook doesn't always include finished_at
+            "severity": event_severity,
+            "status": event_status,
+            "message": message,
+            "dedup_id": f"gitlab-pipeline-{pipeline_id}",
+            "target": {
+                "type": "service",
+                "identifier": f"gitlab: {project_path}"
+            },
+            "raw_data": self._clean_raw_data(gitlab_data)
+        }
+
     def _get_or_create_event_source(self, source_name):
         """Get or create EventSource object."""
         event_source, created = EventSource.objects.get_or_create(
@@ -1096,6 +1171,31 @@ class AlertIngestionViewSet(ViewSet):
             5: 'low'
         }
         return mapping.get(priority, 'medium')
+
+    def _map_gitlab_pipeline_status(self, pipeline_status):
+        """
+        Map GitLab pipeline status to event status and severity.
+        Returns tuple of (event_status, event_severity).
+        """
+        # GitLab pipeline statuses: created, waiting_for_resource, preparing, pending, running, 
+        # success, failed, canceled, skipped, manual, scheduled
+        
+        status_mapping = {
+            'success': ('ok', 'low'),
+            'failed': ('triggered', 'critical'),
+            'canceled': ('suppressed', 'low'),
+            'skipped': ('suppressed', 'low'),
+            'running': ('triggered', 'low'),
+            'pending': ('triggered', 'low'),
+            'created': ('triggered', 'low'),
+            'waiting_for_resource': ('triggered', 'low'),
+            'preparing': ('triggered', 'low'),
+            'manual': ('triggered', 'low'),
+            'scheduled': ('triggered', 'low'),
+        }
+        
+        # Default for any unknown status
+        return status_mapping.get(pipeline_status, ('triggered', 'low'))
 
     def _determine_target_type(self, signalfx_data):
         """Determine target type from SignalFX data."""
