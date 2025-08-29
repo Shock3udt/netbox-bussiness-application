@@ -59,7 +59,7 @@ class TechnicalServiceViewSet(ModelViewSet):
     """
     queryset = TechnicalService.objects.prefetch_related(
         'business_apps', 'vms', 'devices', 'clusters'
-    ).select_related('pagerduty_template').all()
+    ).select_related('pagerduty_service_definition', 'pagerduty_router_rule').all()
     serializer_class = TechnicalServiceSerializer
     permission_classes = [IsAuthenticated]
 
