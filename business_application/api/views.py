@@ -19,6 +19,7 @@ from business_application.api.serializers import (
     CapacitorAlertSerializer,
     SignalFXAlertSerializer,
     EmailAlertSerializer,
+    GitLabPipelineSerializer,
     PagerDutyTemplateSerializer
 )
 from dcim.models import Device
@@ -156,6 +157,126 @@ class EventViewSet(ModelViewSet):
 
         return queryset.order_by('-last_seen_at')
 
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """
+        Bulk delete events by IDs.
+        Expects a JSON payload with 'ids' array.
+        """
+        try:
+            ids = request.data.get('ids', [])
+            if not ids:
+                return Response(
+                    {'error': 'No event IDs provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not isinstance(ids, list):
+                return Response(
+                    {'error': 'IDs must be provided as an array'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate that all IDs are integers
+            try:
+                ids = [int(id) for id in ids]
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': 'All IDs must be valid integers'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Get events that exist and user can delete
+            queryset = self.get_queryset()
+            events_to_delete = queryset.filter(id__in=ids)
+
+            if not events_to_delete.exists():
+                return Response(
+                    {'error': 'No valid events found for the provided IDs'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            deleted_count = events_to_delete.count()
+            events_to_delete.delete()
+
+            logger.info(f'Bulk deleted {deleted_count} events by user {request.user}')
+
+            return Response(
+                {
+                    'success': True,
+                    'deleted_count': deleted_count,
+                    'message': f'Successfully deleted {deleted_count} events'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception(f'Error during bulk delete: {str(e)}')
+            return Response(
+                {'error': 'Failed to delete events', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='bulk-update-status')
+    def bulk_update_status(self, request):
+        """
+        Bulk update event status.
+        Expects a JSON payload with 'ids' array and 'status' field.
+        """
+        try:
+            ids = request.data.get('ids', [])
+            new_status = request.data.get('status')
+
+            if not ids:
+                return Response(
+                    {'error': 'No event IDs provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not new_status:
+                return Response(
+                    {'error': 'No status provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate status value
+            from business_application.models import EventStatus
+            valid_statuses = [choice[0] for choice in EventStatus.CHOICES]
+            if new_status not in valid_statuses:
+                return Response(
+                    {'error': f'Invalid status. Must be one of: {valid_statuses}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            queryset = self.get_queryset()
+            events_to_update = queryset.filter(id__in=ids)
+
+            if not events_to_update.exists():
+                return Response(
+                    {'error': 'No valid events found for the provided IDs'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            updated_count = events_to_update.update(status=new_status)
+
+            logger.info(f'Bulk updated status to {new_status} for {updated_count} events by user {request.user}')
+
+            return Response(
+                {
+                    'success': True,
+                    'updated_count': updated_count,
+                    'message': f'Successfully updated status for {updated_count} events'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception(f'Error during bulk status update: {str(e)}')
+            return Response(
+                {'error': 'Failed to update event status', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class MaintenanceViewSet(ModelViewSet):
     """
@@ -255,6 +376,142 @@ class IncidentViewSet(ModelViewSet):
             queryset = queryset.filter(commander__icontains=commander)
 
         return queryset.order_by('-created_at')
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """
+        Bulk delete incidents by IDs.
+        Expects a JSON payload with 'ids' array.
+        """
+        try:
+            ids = request.data.get('ids', [])
+            if not ids:
+                return Response(
+                    {'error': 'No incident IDs provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            queryset = self.get_queryset()
+            incidents_to_delete = queryset.filter(id__in=ids)
+
+            if not incidents_to_delete.exists():
+                return Response(
+                    {'error': 'No valid incidents found for the provided IDs'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            deleted_count = incidents_to_delete.count()
+            incidents_to_delete.delete()
+
+            logger.info(f'Bulk deleted {deleted_count} incidents by user {request.user}')
+
+            return Response(
+                {
+                    'success': True,
+                    'deleted_count': deleted_count,
+                    'message': f'Successfully deleted {deleted_count} incidents'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception(f'Error during bulk delete: {str(e)}')
+            return Response(
+                {'error': 'Failed to delete incidents', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='bulk-update-status')
+    def bulk_update_status(self, request):
+        """
+        Bulk update incident status.
+        Expects a JSON payload with 'ids' array and 'status' field.
+        """
+        try:
+            ids = request.data.get('ids', [])
+            new_status = request.data.get('status')
+
+            if not ids or not new_status:
+                return Response(
+                    {'error': 'Both ids and status are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate status value
+            from business_application.models import IncidentStatus
+            valid_statuses = [choice[0] for choice in IncidentStatus.CHOICES]
+            if new_status not in valid_statuses:
+                return Response(
+                    {'error': f'Invalid status. Must be one of: {valid_statuses}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            queryset = self.get_queryset()
+            incidents_to_update = queryset.filter(id__in=ids)
+
+            if not incidents_to_update.exists():
+                return Response(
+                    {'error': 'No valid incidents found for the provided IDs'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            updated_count = incidents_to_update.update(status=new_status)
+
+            logger.info(f'Bulk updated status to {new_status} for {updated_count} incidents by user {request.user}')
+
+            return Response(
+                {
+                    'success': True,
+                    'updated_count': updated_count,
+                    'message': f'Successfully updated status for {updated_count} incidents'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            logger.exception(f'Error during bulk status update: {str(e)}')
+            return Response(
+                {'error': 'Failed to update incident status', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'], url_path='blast-radius')
+    def blast_radius(self, request, pk=None):
+        """
+        Calculate the blast radius (downstream impact) of an incident.
+        Returns all services that could be affected by this incident.
+        """
+        try:
+            incident = self.get_object()
+
+            # Use the correlation engine to calculate blast radius
+            from ..utils.correlation import AlertCorrelationEngine
+            correlation_engine = AlertCorrelationEngine()
+            affected_services = correlation_engine.calculate_blast_radius(incident)
+
+            # Serialize the services
+            service_data = []
+            for service in affected_services:
+                service_data.append({
+                    'id': service.id,
+                    'name': service.name,
+                    'service_type': service.service_type,
+                    'health_status': service.health_status
+                })
+
+            return Response({
+                'incident_id': incident.id,
+                'incident_title': incident.title,
+                'affected_services_count': len(affected_services),
+                'affected_services': service_data
+            })
+
+        except Exception as e:
+            logger.exception(f'Error calculating blast radius: {str(e)}')
+            return Response(
+                {'error': 'Failed to calculate blast radius', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class PagerDutyTemplateViewSet(ModelViewSet):
@@ -502,6 +759,40 @@ class AlertIngestionViewSet(ViewSet):
 
         return self._process_standard_alert(standard_payload)
 
+    @action(detail=False, methods=['post'], url_path='gitlab')
+    def gitlab_pipeline(self, request):
+        """
+        GitLab pipeline webhook endpoint.
+        Transforms GitLab pipeline events to standard format.
+        Filters out merge request pipelines as requested.
+        """
+        serializer = GitLabPipelineSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            logger.error(f"Invalid GitLab pipeline event: {serializer.errors}")
+            return Response(
+                {"errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Filter out merge request pipelines
+        pipeline_source = serializer.validated_data['object_attributes'].get('source')
+        if pipeline_source == 'merge_request_event':
+            logger.info("Ignoring merge request pipeline event")
+            return Response(
+                {
+                    "status": "ignored",
+                    "message": "Merge request pipelines are ignored"
+                },
+                status=status.HTTP_200_OK
+            )
+
+        standard_payload = self._transform_gitlab_pipeline(
+            serializer.validated_data
+        )
+
+        return self._process_standard_alert(standard_payload)
+
     def _clean_raw_data(self, raw_data):
         """
         Ensure raw data is JSON serializable and return as dict.
@@ -535,6 +826,17 @@ class AlertIngestionViewSet(ViewSet):
             existing_event.status = alert_data['status']
             existing_event.raw = alert_data.get('raw_data', {})
             existing_event.criticallity = self._map_severity_to_criticality(alert_data['severity'])
+
+            # Re-check target validity for existing events
+            if not existing_event.has_valid_target:
+                target_obj, content_type = self._resolve_target(alert_data.get('target', {}))
+                if target_obj and content_type:
+                    # Target is now available - make event valid
+                    existing_event.object_id = target_obj.id
+                    existing_event.content_type = content_type
+                    existing_event.is_valid = True
+                    logger.info(f"Event {existing_event.id} target resolved, marked as valid")
+
             existing_event.save()
             logger.info(f"Updated existing event {existing_event.id}")
             return existing_event
@@ -543,13 +845,7 @@ class AlertIngestionViewSet(ViewSet):
 
             target_obj, content_type = self._resolve_target(alert_data.get('target', {}))
 
-            if not target_obj or not content_type:
-                raise ValueError(
-                    f"Could not resolve target object for alert. "
-                    f"Target: {alert_data.get('target', {})}. "
-                    f"Ensure at least one Device or TechnicalService exists in the system."
-                )
-
+            # Prepare base event data
             event_data = {
                 'dedup_id': alert_data['dedup_id'],
                 'message': alert_data['message'],
@@ -558,12 +854,29 @@ class AlertIngestionViewSet(ViewSet):
                 'raw': alert_data.get('raw_data', {}),
                 'last_seen_at': current_time,
                 'event_source': self._get_or_create_event_source(alert_data['source']),
-                'object_id': target_obj.id,
-                'content_type': content_type,
             }
 
+            # Handle target resolution
+            if target_obj and content_type:
+                # Valid target found
+                event_data.update({
+                    'object_id': target_obj.id,
+                    'content_type': content_type,
+                    'is_valid': True,
+                })
+                logger.info(f"Creating event with valid target: {target_obj}")
+            else:
+                # No valid target found - create invalid event
+                event_data.update({
+                    'object_id': None,
+                    'content_type': None,
+                    'is_valid': False,
+                })
+                logger.warning(f"Creating invalid event - could not resolve target: {alert_data.get('target', {})}")
+
             event = Event.objects.create(**event_data)
-            logger.info(f"Created new event {event.id} for {target_obj}")
+            target_info = target_obj if target_obj else "no valid target"
+            logger.info(f"Created new event {event.id} for {target_info}")
             return event
 
     def _resolve_target(self, target_data):
@@ -573,7 +886,7 @@ class AlertIngestionViewSet(ViewSet):
         """
         if not target_data or not target_data.get('type') or not target_data.get('identifier'):
             logger.warning(f"Invalid target data: {target_data}")
-            return self._get_fallback_target()
+            return None, None
 
         target_type = target_data['type']
         identifier = target_data['identifier']
@@ -584,9 +897,6 @@ class AlertIngestionViewSet(ViewSet):
             if target_type == 'device':
                 from dcim.models import Device
                 target_obj = Device.objects.filter(name=identifier).first()
-                if not target_obj:
-                    logger.info(f"Creating device {identifier} for alert processing")
-                    target_obj = self._create_test_device(identifier)
                 if target_obj:
                     return target_obj, ContentType.objects.get_for_model(Device)
 
@@ -597,7 +907,12 @@ class AlertIngestionViewSet(ViewSet):
                     return target_obj, ContentType.objects.get_for_model(VirtualMachine)
 
             elif target_type == 'service':
+                # Handle GitLab service naming convention: "gitlab: <path_with_namespace>"
                 target_obj = TechnicalService.objects.filter(name=identifier).first()
+                if not target_obj and identifier.startswith('gitlab:'):
+                    # Only auto-create GitLab services
+                    logger.info(f"Creating GitLab service {identifier} for alert processing")
+                    target_obj = self._create_test_service(identifier)
                 if target_obj:
                     return target_obj, ContentType.objects.get_for_model(TechnicalService)
 
@@ -607,30 +922,10 @@ class AlertIngestionViewSet(ViewSet):
         except Exception as e:
             logger.error(f"Error resolving target {target_type}:{identifier}: {e}")
 
-        logger.warning(f"Could not resolve target {target_type}:{identifier}, using fallback")
-        return self._get_fallback_target()
-
-    def _get_fallback_target(self):
-        """
-        Get a fallback target object when the actual target cannot be resolved.
-        This ensures we always have a valid object_id and content_type.
-        """
-        try:
-            from django.contrib.contenttypes.models import ContentType
-            from dcim.models import Device
-
-            fallback_device = Device.objects.first()
-            if fallback_device:
-                return fallback_device, ContentType.objects.get_for_model(Device)
-
-            fallback_service = TechnicalService.objects.first()
-            if fallback_service:
-                return fallback_service, ContentType.objects.get_for_model(TechnicalService)
-
-        except Exception as e:
-            logger.error(f"Error getting fallback target: {e}")
-
+        logger.warning(f"Could not resolve target {target_type}:{identifier}, will create invalid event")
         return None, None
+
+
 
     def _create_test_device(self, device_name):
         """
@@ -678,6 +973,30 @@ class AlertIngestionViewSet(ViewSet):
 
         except Exception as e:
             logger.error(f"Error creating test device {device_name}: {e}")
+            return None
+
+    def _create_test_service(self, service_name):
+        """
+        Create a minimal test technical service for alert processing.
+        This is used when a service referenced in an alert doesn't exist.
+        """
+        try:
+            # Check if service already exists
+            existing_service = TechnicalService.objects.filter(name=service_name).first()
+            if existing_service:
+                return existing_service
+
+            # Create the service
+            service = TechnicalService.objects.create(
+                name=service_name,
+                service_type='technical'
+            )
+
+            logger.info(f"Created test service: {service_name}")
+            return service
+
+        except Exception as e:
+            logger.error(f"Error creating test service {service_name}: {e}")
             return None
 
     def _process_standard_alert(self, standard_payload):
@@ -761,6 +1080,45 @@ class AlertIngestionViewSet(ViewSet):
             "raw_data": self._clean_raw_data(email_data)
         }
 
+    def _transform_gitlab_pipeline(self, gitlab_data):
+        """
+        Transform GitLab pipeline webhook format to standard format.
+        """
+        object_attributes = gitlab_data['object_attributes']
+        project = gitlab_data['project']
+        commit = gitlab_data.get('commit', {})
+        user = gitlab_data.get('user', {})
+
+        # Map GitLab pipeline status to event status and severity
+        pipeline_status = object_attributes['status']
+        event_status, event_severity = self._map_gitlab_pipeline_status(pipeline_status)
+
+        # Generate message with pipeline information
+        pipeline_id = object_attributes['id']
+        project_path = project['path_with_namespace']
+        commit_message = commit.get('message', 'No commit message')
+        commit_author = commit.get('author_name', 'Unknown')
+
+        message = f"GitLab pipeline {pipeline_status} for {project_path}"
+        if commit_message and commit_message != 'No commit message':
+            message += f" - {commit_message[:100]}"
+        if commit_author and commit_author != 'Unknown':
+            message += f" by {commit_author}"
+
+        return {
+            "source": "gitlab",
+            "timestamp": timezone.now(),  # GitLab webhook doesn't always include finished_at
+            "severity": event_severity,
+            "status": event_status,
+            "message": message,
+            "dedup_id": f"gitlab-pipeline-{pipeline_id}",
+            "target": {
+                "type": "service",
+                "identifier": f"gitlab: {project_path}"
+            },
+            "raw_data": self._clean_raw_data(gitlab_data)
+        }
+
     def _get_or_create_event_source(self, source_name):
         """Get or create EventSource object."""
         event_source, created = EventSource.objects.get_or_create(
@@ -794,6 +1152,31 @@ class AlertIngestionViewSet(ViewSet):
             5: 'low'
         }
         return mapping.get(priority, 'medium')
+
+    def _map_gitlab_pipeline_status(self, pipeline_status):
+        """
+        Map GitLab pipeline status to event status and severity.
+        Returns tuple of (event_status, event_severity).
+        """
+        # GitLab pipeline statuses: created, waiting_for_resource, preparing, pending, running,
+        # success, failed, canceled, skipped, manual, scheduled
+
+        status_mapping = {
+            'success': ('ok', 'low'),
+            'failed': ('triggered', 'critical'),
+            'canceled': ('suppressed', 'low'),
+            'skipped': ('suppressed', 'low'),
+            'running': ('triggered', 'low'),
+            'pending': ('triggered', 'low'),
+            'created': ('triggered', 'low'),
+            'waiting_for_resource': ('triggered', 'low'),
+            'preparing': ('triggered', 'low'),
+            'manual': ('triggered', 'low'),
+            'scheduled': ('triggered', 'low'),
+        }
+
+        # Default for any unknown status
+        return status_mapping.get(pipeline_status, ('triggered', 'low'))
 
     def _determine_target_type(self, signalfx_data):
         """Determine target type from SignalFX data."""

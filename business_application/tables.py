@@ -181,6 +181,7 @@ class EventSourceTable(NetBoxTable):
         fields = ['name', 'description', 'events_count']
 
 class EventTable(NetBoxTable):
+    pk = tables.CheckBoxColumn()
     message = tables.Column(linkify=True)
     status = tables.TemplateColumn(
         template_code="""
@@ -214,11 +215,32 @@ class EventTable(NetBoxTable):
     )
     event_source = tables.Column(linkify=True)
     last_seen_at = tables.DateTimeColumn()
-    obj = tables.Column(verbose_name="Related Object")
+    obj = tables.TemplateColumn(
+        template_code="""
+        {% load helpers %}
+        {% if record.has_valid_target %}
+            {{ record.obj }}
+        {% else %}
+            <span class="text-danger"><i class="mdi mdi-alert-circle-outline"></i> Invalid Target</span>
+        {% endif %}
+        """,
+        verbose_name="Related Object"
+    )
+    is_valid = tables.TemplateColumn(
+        template_code="""
+        {% load helpers %}
+        {% if record.is_valid %}
+            <span class="badge bg-success text-light"><i class="mdi mdi-check-circle"></i> Valid</span>
+        {% else %}
+            <span class="badge bg-danger text-light"><i class="mdi mdi-alert-circle"></i> Invalid</span>
+        {% endif %}
+        """,
+        verbose_name="Validity"
+    )
 
     class Meta(NetBoxTable.Meta):
         model = Event
-        fields = ['message', 'status', 'criticallity', 'event_source', 'last_seen_at', 'obj']
+        fields = ['pk', 'message', 'status', 'criticallity', 'event_source', 'last_seen_at', 'obj', 'is_valid']
 
 class MaintenanceTable(NetBoxTable):
     description = tables.Column(linkify=True)
@@ -252,6 +274,7 @@ class ChangeTable(NetBoxTable):
         fields = ['description', 'type', 'created_at', 'obj']
 
 class IncidentTable(NetBoxTable):
+    pk = tables.CheckBoxColumn()
     title = tables.Column(linkify=True)
     status = tables.TemplateColumn(
         template_code="""
@@ -276,4 +299,4 @@ class IncidentTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = Incident
-        fields = ['title', 'status', 'severity', 'created_at', 'resolved_at', 'responders_count', 'affected_services_count', 'events_count', 'commander']
+        fields = ['pk', 'title', 'status', 'severity', 'created_at', 'resolved_at', 'responders_count', 'affected_services_count', 'events_count', 'commander']

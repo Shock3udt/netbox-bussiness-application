@@ -3,7 +3,7 @@ from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 import logging
-from typing import Optional, List, Set
+from typing import Optional, List
 
 from dcim.models import Device
 from virtualization.models import VirtualMachine
@@ -36,6 +36,13 @@ class AlertCorrelationEngine:
         3. Returns None if no correlation is needed
         """
         try:
+            # Skip correlation for invalid events
+            if not event.is_valid or not event.has_valid_target:
+                self.logger.warning(
+                    f"Skipping correlation for invalid event {event.id}"
+                )
+                return None
+
             target_object = self._resolve_target(event)
             if not target_object:
                 self.logger.warning(
@@ -142,13 +149,9 @@ class AlertCorrelationEngine:
         services = []
 
         if isinstance(target, Device):
-            services = list(
-                TechnicalService.objects.filter(device=target)
-            )
+            services = list(target.technical_services.all())
         elif isinstance(target, VirtualMachine):
-            services = list(
-                TechnicalService.objects.filter(virtual_machine=target)
-            )
+            services = list(target.technical_services.all())
         elif isinstance(target, TechnicalService):
             services = [target]
 
@@ -199,9 +202,8 @@ class AlertCorrelationEngine:
 
         for service in services:
             incidents = Incident.objects.filter(
-                models.Q(technical_services=service) |
-                models.Q(business_applications__technical_services=service),
-                status__in=['NEW', 'ACKNOWLEDGED', 'IN_PROGRESS'],
+                affected_services=service,
+                status__in=['new', 'investigating', 'identified'],
                 created_at__gte=time_threshold
             ).distinct()
 
@@ -220,12 +222,12 @@ class AlertCorrelationEngine:
         if incident.events.filter(dedup_id=event.dedup_id).exists():
             return False
 
-        severity_map = {
-            'LOW': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4
-        }
+        # Map both event and incident severities to numeric values for comparison
+        event_severity_map = {'LOW': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4}
+        incident_severity_map = {'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
 
-        event_severity = severity_map.get(event.criticality, 2)
-        incident_severity = severity_map.get(incident.severity, 2)
+        event_severity = event_severity_map.get(event.criticallity, 2)
+        incident_severity = incident_severity_map.get(incident.severity, 2)
 
         return event_severity >= incident_severity - 1
 
@@ -235,7 +237,7 @@ class AlertCorrelationEngine:
         """
         if event.status != 'triggered':
             return False
-        if event.criticality in ['LOW']:
+        if event.criticallity in ['LOW']:
             return False
 
         return True
@@ -249,27 +251,25 @@ class AlertCorrelationEngine:
         title = self._generate_incident_title(event, services)
 
         severity_map = {
-            'CRITICAL': 'CRITICAL',
-            'HIGH': 'HIGH',
-            'MEDIUM': 'MEDIUM',
-            'LOW': 'LOW'
+            'CRITICAL': 'critical',
+            'HIGH': 'high',
+            'MEDIUM': 'medium',
+            'LOW': 'low'
         }
 
         incident = Incident.objects.create(
             title=title,
-            status='NEW',
-            severity=severity_map.get(event.criticality, 'MEDIUM'),
-            reporter=event.reporter or 'system',
+            status='new',  # Use lowercase to match IncidentStatus.NEW
+            severity=severity_map.get(event.criticallity, 'medium'),  # Use lowercase to match IncidentSeverity
+            reporter='system',  # Events don't have reporter field, use system as default
             description=f"Incident created from alert: {event.message}"
         )
 
-        incident.technical_services.set(services)
+        # Set technical services affected by this incident
+        incident.affected_services.set(services)
 
-        event.incident = incident
-        event.save()
-
-        business_apps = self._find_business_applications(services)
-        incident.business_applications.set(business_apps)
+        # Add event to incident using the many-to-many relationship
+        incident.events.add(event)
 
         return incident
 
@@ -277,14 +277,19 @@ class AlertCorrelationEngine:
         """
         Add an event to an existing incident.
         """
-        event.incident = incident
-        event.save()
+        # Add event to incident using the many-to-many relationship
+        incident.events.add(event)
 
-        severity_order = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
-        if severity_order.index(event.criticality) > severity_order.index(incident.severity):
-            incident.severity = event.criticality
+        # Escalate incident severity if event is more critical
+        event_severity_map = {'LOW': 'low', 'MEDIUM': 'medium', 'HIGH': 'high', 'CRITICAL': 'critical'}
+        severity_order = ['low', 'medium', 'high', 'critical']
+        mapped_event_severity = event_severity_map.get(event.criticallity, 'medium')
+
+        if severity_order.index(mapped_event_severity) > severity_order.index(incident.severity):
+            incident.severity = mapped_event_severity
             incident.save()
 
+        # Update incident timestamp
         incident.updated_at = timezone.now()
         incident.save()
 
@@ -298,9 +303,9 @@ class AlertCorrelationEngine:
             service_names = ', '.join([s.name for s in services[:3]])
             if len(services) > 3:
                 service_names += f" and {len(services) - 3} more"
-            return f"{event.criticality}: {service_names} - {event.message[:100]}"
+            return f"{event.criticallity}: {service_names} - {event.message[:100]}"
         else:
-            return f"{event.criticality}: {event.message[:150]}"
+            return f"{event.criticallity}: {event.message[:150]}"
 
     def _find_business_applications(
             self, services: List[TechnicalService]

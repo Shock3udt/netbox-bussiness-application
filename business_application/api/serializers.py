@@ -42,6 +42,10 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'service_type',
+            'devices',
+            'vms',
+            'clusters',
+            'business_apps',
             'business_apps_count',
             'vms_count',
             'devices_count',
@@ -107,6 +111,8 @@ class EventSerializer(serializers.ModelSerializer):
     """
     event_source_name = serializers.CharField(source='event_source.name', read_only=True)
     content_type_name = serializers.CharField(source='content_type.model', read_only=True)
+    has_valid_target = serializers.ReadOnlyField()
+    target_display = serializers.ReadOnlyField()
 
     class Meta:
         model = Event
@@ -125,6 +131,9 @@ class EventSerializer(serializers.ModelSerializer):
             'event_source',
             'event_source_name',
             'raw',
+            'is_valid',
+            'has_valid_target',
+            'target_display',
             'created',
             'last_updated',
         ]
@@ -225,7 +234,7 @@ class PagerDutyTemplateSerializer(serializers.ModelSerializer):
     Serializer for the PagerDutyTemplate model.
     """
     services_using_template = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = PagerDutyTemplate
         fields = [
@@ -396,6 +405,44 @@ class EmailAlertSerializer(serializers.Serializer):
             data['target_identifier'] = 'unknown'
 
         return data
+
+class GitLabPipelineSerializer(serializers.Serializer):
+    """
+    Serializer for GitLab pipeline webhook payload.
+    Based on GitLab Pipeline Events webhook format.
+    """
+    object_kind = serializers.CharField()
+    object_attributes = serializers.DictField()
+    project = serializers.DictField()
+    commit = serializers.DictField(required=False)
+    user = serializers.DictField(required=False)
+
+    def validate_object_kind(self, value):
+        """Validate that this is a pipeline event."""
+        if value != 'pipeline':
+            raise serializers.ValidationError(
+                "This endpoint only accepts pipeline events"
+            )
+        return value
+
+    def validate_object_attributes(self, value):
+        """Validate pipeline attributes contain required fields."""
+        required_fields = ['id', 'status', 'source']
+        for field in required_fields:
+            if field not in value:
+                raise serializers.ValidationError(
+                    f"Missing required field in object_attributes: {field}"
+                )
+        return value
+
+    def validate_project(self, value):
+        """Validate project contains required fields."""
+        if 'path_with_namespace' not in value:
+            raise serializers.ValidationError(
+                "Missing required field in project: path_with_namespace"
+            )
+        return value
+
 
 class WebhookSignatureSerializer(serializers.Serializer):
     """

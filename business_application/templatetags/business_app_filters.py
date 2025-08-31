@@ -80,6 +80,37 @@ def event_criticality_badge(criticality, display_name=None):
     )
 
 @register.filter
+def event_validity_badge(is_valid):
+    """
+    Render an event validity status as a colored badge with icon.
+    """
+    if is_valid:
+        return mark_safe(
+            '<span class="badge bg-success text-light">'
+            '<i class="mdi mdi-check-circle"></i> Valid'
+            '</span>'
+        )
+    else:
+        return mark_safe(
+            '<span class="badge bg-danger text-light">'
+            '<i class="mdi mdi-alert-circle"></i> Invalid'
+            '</span>'
+        )
+
+@register.filter
+def event_target_display(event):
+    """
+    Display the target object for an event, with special handling for invalid events.
+    """
+    if not event.has_valid_target:
+        return mark_safe(
+            '<span class="text-danger">'
+            '<i class="mdi mdi-alert-circle-outline"></i> Invalid Target'
+            '</span>'
+        )
+    return event.target_display
+
+@register.filter
 def maintenance_status_badge(status, display_name=None):
     """
     Render a maintenance status as a colored badge with icon.

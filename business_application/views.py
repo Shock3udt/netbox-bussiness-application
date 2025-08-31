@@ -1,6 +1,6 @@
 from netbox.views import generic
 from utilities.views import ViewTab, register_model_view
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, get_object_or_404
 from django.views.generic import TemplateView
 from django.db.models import Q
 from django.utils import timezone
@@ -23,7 +23,9 @@ from .filtersets import (
     BusinessApplicationFilter, TechnicalServiceFilter, ServiceDependencyFilter, EventSourceFilter, EventFilter,
     MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter, PagerDutyTemplateFilter
 )
-from django.http import HttpResponse, JsonResponse
+from django.http import JsonResponse
+from dcim.models import Device
+from virtualization.models import VirtualMachine, Cluster
 
 # BusinessApplication Views
 class BusinessApplicationListView(generic.ObjectListView):
@@ -308,6 +310,553 @@ class IncidentEditView(generic.ObjectEditView):
 class IncidentDeleteView(generic.ObjectDeleteView):
     queryset = Incident.objects.all()
 
+@register_model_view(Incident, name='timeline', path='timeline')
+class IncidentTimelineView(generic.ObjectView):
+    queryset = Incident.objects.all()
+    template_name = 'business_application/incident/timeline.html'
+
+    tab = ViewTab(
+        label='Timeline',
+        badge=lambda obj: obj.events.count(),
+        permission='business_application.view_incident',
+        weight=100
+    )
+
+    def get(self, request, pk):
+        obj = self.get_object(pk=pk)
+
+        # Get all events related to this incident
+        events = obj.events.all().order_by('created_at')
+
+        # Create timeline entries for events and their state changes
+        timeline_entries = []
+
+        # Add incident creation as first timeline entry
+        timeline_entries.append({
+            'timestamp': obj.created_at,
+            'type': 'incident_created',
+            'title': 'Incident Created',
+            'description': f'Incident "{obj.title}" was created',
+            'severity': obj.severity,
+            'status': obj.status,
+            'object': obj,
+            'icon': 'mdi-alert-circle'
+        })
+
+        # Add events to timeline
+        for event in events:
+            timeline_entries.append({
+                'timestamp': event.created_at,
+                'type': 'event_added',
+                'title': 'Event Added to Incident',
+                'description': event.message,
+                'severity': event.criticallity,
+                'status': event.status,
+                'object': event,
+                'icon': 'mdi-plus-circle',
+                'event_source': event.event_source.name if event.event_source else 'Unknown'
+            })
+
+            # If event was updated after creation, add update entry
+            if event.updated_at > event.created_at:
+                timeline_entries.append({
+                    'timestamp': event.updated_at,
+                    'type': 'event_updated',
+                    'title': 'Event Updated',
+                    'description': f'Event status changed: {event.message}',
+                    'severity': event.criticallity,
+                    'status': event.status,
+                    'object': event,
+                    'icon': 'mdi-pencil-circle',
+                    'event_source': event.event_source.name if event.event_source else 'Unknown'
+                })
+
+        # Add incident status changes if resolved
+        if obj.resolved_at:
+            timeline_entries.append({
+                'timestamp': obj.resolved_at,
+                'type': 'incident_resolved',
+                'title': 'Incident Resolved',
+                'description': f'Incident "{obj.title}" was resolved',
+                'severity': obj.severity,
+                'status': 'resolved',
+                'object': obj,
+                'icon': 'mdi-check-circle'
+            })
+
+        # Add affected services information
+        affected_services = obj.affected_services.all()
+        if affected_services:
+            timeline_entries.append({
+                'timestamp': obj.created_at,
+                'type': 'services_affected',
+                'title': 'Affected Services',
+                'description': f'{affected_services.count()} service(s) affected by this incident',
+                'severity': obj.severity,
+                'status': obj.status,
+                'object': obj,
+                'icon': 'mdi-server-network',
+                'services': list(affected_services)
+            })
+
+        # Add responders if any
+        responders = obj.responders.all()
+        if responders:
+            timeline_entries.append({
+                'timestamp': obj.created_at,
+                'type': 'responders_assigned',
+                'title': 'Responders Assigned',
+                'description': f'{responders.count()} responder(s) assigned to this incident',
+                'severity': obj.severity,
+                'status': obj.status,
+                'object': obj,
+                'icon': 'mdi-account-multiple',
+                'responders': list(responders)
+            })
+
+        # Sort timeline entries by timestamp
+        timeline_entries.sort(key=lambda x: x['timestamp'])
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'timeline_entries': timeline_entries,
+                'events': events,
+            }
+        )
+
+@register_model_view(TechnicalService, name='incidents_events', path='incidents-events')
+class TechnicalServiceIncidentsEventsView(generic.ObjectView):
+    queryset = TechnicalService.objects.all()
+    template_name = 'business_application/technicalservice/incidents_events.html'
+
+    tab = ViewTab(
+        label='Incidents & Events',
+        badge=lambda obj: obj.incidents.count() + Event.objects.filter(
+            content_type__model__in=['device', 'virtualmachine', 'cluster'],
+            object_id__in=list(obj.devices.values_list('id', flat=True)) +
+                          list(obj.vms.values_list('id', flat=True)) +
+                          list(obj.clusters.values_list('id', flat=True))
+        ).count(),
+        permission='business_application.view_technicalservice',
+        weight=400
+    )
+
+    def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
+        obj = self.get_object(pk=pk)
+
+        # Get incidents affecting this service
+        incidents = obj.incidents.all().order_by('-created_at')
+
+        # Get all events related to this service's infrastructure
+        events = []
+        timeline_entries = []
+
+        # Get content types
+        device_ct = ContentType.objects.get_for_model(Device)
+        vm_ct = ContentType.objects.get_for_model(VirtualMachine)
+        cluster_ct = ContentType.objects.get_for_model(Cluster)
+        service_ct = ContentType.objects.get_for_model(TechnicalService)
+
+        # Collect events from devices
+        device_ids = list(obj.devices.values_list('id', flat=True))
+        if device_ids:
+            device_events = Event.objects.filter(
+                content_type=device_ct,
+                object_id__in=device_ids
+            ).order_by('-created_at')
+            events.extend(device_events)
+
+        # Collect events from VMs
+        vm_ids = list(obj.vms.values_list('id', flat=True))
+        if vm_ids:
+            vm_events = Event.objects.filter(
+                content_type=vm_ct,
+                object_id__in=vm_ids
+            ).order_by('-created_at')
+            events.extend(vm_events)
+
+        # Collect events from clusters
+        cluster_ids = list(obj.clusters.values_list('id', flat=True))
+        if cluster_ids:
+            cluster_events = Event.objects.filter(
+                content_type=cluster_ct,
+                object_id__in=cluster_ids
+            ).order_by('-created_at')
+            events.extend(cluster_events)
+
+        # Collect events directly related to this service
+        service_events = Event.objects.filter(
+            content_type=service_ct,
+            object_id=obj.id
+        ).order_by('-created_at')
+        events.extend(service_events)
+
+        # Create timeline entries for incidents
+        for incident in incidents:
+            timeline_entries.append({
+                'timestamp': incident.created_at,
+                'type': 'incident_created',
+                'title': 'Incident Created',
+                'description': incident.title,
+                'severity': incident.severity,
+                'status': incident.status,
+                'object': incident,
+                'icon': 'mdi-alert-multiple',
+                'related_object': obj
+            })
+
+            if incident.resolved_at:
+                timeline_entries.append({
+                    'timestamp': incident.resolved_at,
+                    'type': 'incident_resolved',
+                    'title': 'Incident Resolved',
+                    'description': f'Incident "{incident.title}" was resolved',
+                    'severity': incident.severity,
+                    'status': 'resolved',
+                    'object': incident,
+                    'icon': 'mdi-check-circle',
+                    'related_object': obj
+                })
+
+        # Create timeline entries for events
+        for event in events:
+            # Determine the infrastructure component
+            if event.content_type == device_ct:
+                infra_type = 'Device'
+                try:
+                    infra_name = Device.objects.get(id=event.object_id).name
+                except Device.DoesNotExist:
+                    infra_name = f'Device ID {event.object_id}'
+            elif event.content_type == vm_ct:
+                infra_type = 'VM'
+                try:
+                    infra_name = VirtualMachine.objects.get(id=event.object_id).name
+                except VirtualMachine.DoesNotExist:
+                    infra_name = f'VM ID {event.object_id}'
+            elif event.content_type == cluster_ct:
+                infra_type = 'Cluster'
+                try:
+                    infra_name = Cluster.objects.get(id=event.object_id).name
+                except Cluster.DoesNotExist:
+                    infra_name = f'Cluster ID {event.object_id}'
+            else:
+                infra_type = 'Service'
+                infra_name = obj.name
+
+            timeline_entries.append({
+                'timestamp': event.created_at,
+                'type': 'event',
+                'title': f'Event on {infra_type}',
+                'description': f'{event.message} ({infra_name})',
+                'severity': event.criticallity,
+                'status': event.status,
+                'object': event,
+                'icon': 'mdi-alert-circle-outline',
+                'event_source': event.event_source.name if event.event_source else 'Unknown',
+                'infra_type': infra_type,
+                'infra_name': infra_name
+            })
+
+        # Get upstream services and their health status
+        upstream_deps = obj.get_upstream_dependencies()
+        upstream_services_health = []
+
+        for dep in upstream_deps:
+            upstream_service = dep.upstream_service
+            health_status = upstream_service.health_status
+
+            upstream_services_health.append({
+                'service': upstream_service,
+                'dependency': dep,
+                'health_status': health_status,
+                'is_degraded': health_status in ['degraded', 'down', 'under_maintenance'],
+                'incidents_count': upstream_service.incidents.filter(
+                    status__in=['new', 'investigating', 'identified']
+                ).count()
+            })
+
+        # Sort timeline entries by timestamp (newest first)
+        timeline_entries.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        # Get statistics
+        stats = {
+            'total_incidents': incidents.count(),
+            'active_incidents': incidents.filter(status__in=['new', 'investigating', 'identified']).count(),
+            'total_events': len(events),
+            'triggered_events': len([e for e in events if e.status == 'triggered']),
+            'critical_events': len([e for e in events if e.criticallity == 'CRITICAL']),
+            'upstream_degraded': len([s for s in upstream_services_health if s['is_degraded']]),
+        }
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'timeline_entries': timeline_entries[:50],  # Limit to 50 most recent
+                'incidents': incidents,
+                'events': events[:20],  # Limit to 20 most recent events
+                'upstream_services_health': upstream_services_health,
+                'stats': stats,
+            }
+        )
+
+@register_model_view(BusinessApplication, name='incidents_events', path='incidents-events')
+class BusinessApplicationIncidentsEventsView(generic.ObjectView):
+    queryset = BusinessApplication.objects.all()
+    template_name = 'business_application/businessapplication/incidents_events.html'
+
+    tab = ViewTab(
+        label='Incidents & Events',
+        badge=lambda obj: Incident.objects.filter(
+            affected_services__business_apps=obj
+        ).distinct().count() + Event.objects.filter(
+            content_type__model__in=['device', 'virtualmachine'],
+            object_id__in=list(obj.devices.values_list('id', flat=True)) +
+                          list(obj.virtual_machines.values_list('id', flat=True))
+        ).count(),
+        permission='business_application.view_businessapplication',
+        weight=400
+    )
+
+    def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
+        obj = self.get_object(pk=pk)
+
+        # Get incidents affecting services related to this business application
+        related_services = obj.technical_services.all()
+        incidents = Incident.objects.filter(
+            affected_services__in=related_services
+        ).distinct().order_by('-created_at')
+
+        # Get all events related to this business application's infrastructure
+        events = []
+        timeline_entries = []
+
+        # Get content types
+        device_ct = ContentType.objects.get_for_model(Device)
+        vm_ct = ContentType.objects.get_for_model(VirtualMachine)
+
+        # Collect events from devices
+        device_ids = list(obj.devices.values_list('id', flat=True))
+        if device_ids:
+            device_events = Event.objects.filter(
+                content_type=device_ct,
+                object_id__in=device_ids
+            ).order_by('-created_at')
+            events.extend(device_events)
+
+        # Collect events from VMs
+        vm_ids = list(obj.virtual_machines.values_list('id', flat=True))
+        if vm_ids:
+            vm_events = Event.objects.filter(
+                content_type=vm_ct,
+                object_id__in=vm_ids
+            ).order_by('-created_at')
+            events.extend(vm_events)
+
+        # Create timeline entries for incidents
+        for incident in incidents:
+            # Find which services are affected
+            affected_services = incident.affected_services.filter(
+                business_apps=obj
+            )
+
+            timeline_entries.append({
+                'timestamp': incident.created_at,
+                'type': 'incident_created',
+                'title': 'Incident Affects Business Application',
+                'description': incident.title,
+                'severity': incident.severity,
+                'status': incident.status,
+                'object': incident,
+                'icon': 'mdi-alert-multiple',
+                'affected_services': list(affected_services)
+            })
+
+            if incident.resolved_at:
+                timeline_entries.append({
+                    'timestamp': incident.resolved_at,
+                    'type': 'incident_resolved',
+                    'title': 'Incident Resolved',
+                    'description': f'Incident "{incident.title}" was resolved',
+                    'severity': incident.severity,
+                    'status': 'resolved',
+                    'object': incident,
+                    'icon': 'mdi-check-circle',
+                    'affected_services': list(affected_services)
+                })
+
+        # Create timeline entries for events
+        for event in events:
+            # Determine the infrastructure component
+            if event.content_type == device_ct:
+                infra_type = 'Device'
+                try:
+                    infra_name = Device.objects.get(id=event.object_id).name
+                except Device.DoesNotExist:
+                    infra_name = f'Device ID {event.object_id}'
+            elif event.content_type == vm_ct:
+                infra_type = 'VM'
+                try:
+                    infra_name = VirtualMachine.objects.get(id=event.object_id).name
+                except VirtualMachine.DoesNotExist:
+                    infra_name = f'VM ID {event.object_id}'
+            else:
+                infra_type = 'Unknown'
+                infra_name = f'Object ID {event.object_id}'
+
+            timeline_entries.append({
+                'timestamp': event.created_at,
+                'type': 'event',
+                'title': f'Event on {infra_type}',
+                'description': f'{event.message} ({infra_name})',
+                'severity': event.criticallity,
+                'status': event.status,
+                'object': event,
+                'icon': 'mdi-alert-circle-outline',
+                'event_source': event.event_source.name if event.event_source else 'Unknown',
+                'infra_type': infra_type,
+                'infra_name': infra_name
+            })
+
+        # Sort timeline entries by timestamp (newest first)
+        timeline_entries.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        # Get service health summary
+        service_health_summary = {}
+        for service in related_services:
+            health_status = service.health_status
+            if health_status not in service_health_summary:
+                service_health_summary[health_status] = 0
+            service_health_summary[health_status] += 1
+
+        # Get statistics
+        stats = {
+            'total_incidents': incidents.count(),
+            'active_incidents': incidents.filter(status__in=['new', 'investigating', 'identified']).count(),
+            'total_events': len(events),
+            'triggered_events': len([e for e in events if e.status == 'triggered']),
+            'critical_events': len([e for e in events if e.criticallity == 'CRITICAL']),
+            'total_services': related_services.count(),
+            'degraded_services': len([s for s in related_services if s.health_status in ['degraded', 'down', 'under_maintenance']]),
+        }
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'timeline_entries': timeline_entries[:50],  # Limit to 50 most recent
+                'incidents': incidents,
+                'events': events[:20],  # Limit to 20 most recent events
+                'related_services': related_services,
+                'service_health_summary': service_health_summary,
+                'stats': stats,
+            }
+        )
+
+@register_model_view(Device, name='events', path='events')
+class DeviceEventsView(generic.ObjectView):
+    queryset = Device.objects.all()
+    template_name = 'business_application/device/events.html'
+
+    tab = ViewTab(
+        label='Events',
+        badge=lambda obj: Event.objects.filter(content_type__model='device', object_id=obj.pk).count(),
+        permission='dcim.view_device',
+        weight=500
+    )
+
+    def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
+        obj = self.get_object(pk=pk)
+
+        # Get device content type
+        device_ct = ContentType.objects.get_for_model(Device)
+
+        # Get all events related to this device
+        events = Event.objects.filter(
+            content_type=device_ct,
+            object_id=obj.pk
+        ).order_by('-created_at')
+
+        # Get related technical services for this device
+        related_services = obj.technical_services.all()
+
+        # Get incidents that affect services related to this device
+        related_incidents = Incident.objects.filter(
+            affected_services__in=related_services
+        ).distinct()
+
+        # Create event timeline entries
+        timeline_entries = []
+
+        # Add events to timeline
+        for event in events:
+            timeline_entries.append({
+                'timestamp': event.created_at,
+                'type': 'event',
+                'title': 'Event Recorded',
+                'description': event.message,
+                'severity': event.criticallity,
+                'status': event.status,
+                'object': event,
+                'icon': 'mdi-alert-circle-outline',
+                'event_source': event.event_source.name if event.event_source else 'Unknown',
+                'dedup_id': event.dedup_id
+            })
+
+            # If event was updated after creation, add update entry
+            if event.updated_at > event.created_at:
+                timeline_entries.append({
+                    'timestamp': event.updated_at,
+                    'type': 'event_updated',
+                    'title': 'Event Updated',
+                    'description': f'Event status changed: {event.message}',
+                    'severity': event.criticallity,
+                    'status': event.status,
+                    'object': event,
+                    'icon': 'mdi-pencil-circle-outline',
+                    'event_source': event.event_source.name if event.event_source else 'Unknown',
+                    'dedup_id': event.dedup_id
+                })
+
+        # Sort timeline entries by timestamp (newest first)
+        timeline_entries.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        # Get event statistics
+        event_stats = {
+            'total': events.count(),
+            'triggered': events.filter(status='triggered').count(),
+            'ok': events.filter(status='ok').count(),
+            'suppressed': events.filter(status='suppressed').count(),
+            'critical': events.filter(criticallity='CRITICAL').count(),
+            'warning': events.filter(criticallity='WARNING').count(),
+            'info': events.filter(criticallity='INFO').count(),
+        }
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'timeline_entries': timeline_entries,
+                'events': events,
+                'related_services': related_services,
+                'related_incidents': related_incidents,
+                'event_stats': event_stats,
+            }
+        )
+
 # ServiceDependency Views
 class ServiceDependencyListView(generic.ObjectListView):
     queryset = ServiceDependency.objects.all()
@@ -540,7 +1089,7 @@ class CalendarView(TemplateView):
         return context
 
 # New view for dependency graph visualization
-def dependency_graph_api(request, pk):
+def dependency_graph_api(request, pk):  # pylint: disable=unused-argument
     """API endpoint to return dependency graph data for a technical service"""
     service = get_object_or_404(TechnicalService, pk=pk)
 
