@@ -43,7 +43,7 @@
                     <small class="text-muted">
                         <i class="mdi mdi-information"></i>
                         <strong>Legend:</strong>
-                        <span class="badge bg-danger ms-1">Current Service</span>
+                        <span class="badge bg-primary ms-1">Current Service (Blue Border)</span>
                         <span class="badge bg-success ms-1">Healthy</span>
                         <span class="badge bg-warning ms-1">Degraded</span>
                         <span class="badge bg-danger ms-1">Down</span>
@@ -175,14 +175,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Color scheme
     const colors = {
-        currentService: '#dc3545',      // Red
         healthyService: '#28a745',      // Green
         degradedService: '#ffc107',     // Yellow/Orange
         downService: '#dc3545',         // Red
         maintenanceService: '#17a2b8',  // Blue
         redundancyGroup: '#fd7e14',     // Orange
         normalLink: '#007bff',          // Blue
-        redundancyLink: '#28a745'       // Green
+        redundancyLink: '#28a745',      // Green
+        currentServiceBorder: '#007bff' // Blue border for current service
     };
 
     // Create SVG element
@@ -310,10 +310,21 @@ document.addEventListener('DOMContentLoaded', function() {
         node.append('circle')
             .attr('r', d => getNodeRadius(d))
             .attr('fill', d => getNodeColor(d))
-            .attr('stroke', '#ffffff')
-            .attr('stroke-width', 3)
+            .attr('stroke', d => d.id === {{ object.id }} ? colors.currentServiceBorder : '#ffffff')
+            .attr('stroke-width', d => d.id === {{ object.id }} ? 5 : 3)
             .attr('filter', 'drop-shadow(2px 2px 4px rgba(0,0,0,0.3))')
             .style('cursor', 'pointer');
+
+        // Add additional blue highlight circle for current service
+        node.filter(d => d.id === {{ object.id }})
+            .append('circle')
+            .attr('r', d => getNodeRadius(d) + 8)
+            .attr('fill', 'none')
+            .attr('stroke', colors.currentServiceBorder)
+            .attr('stroke-width', 3)
+            .attr('stroke-dasharray', '5,3')
+            .attr('opacity', 0.8)
+            .style('pointer-events', 'none');
 
         // Add icons for redundancy group nodes
         node.filter(d => d.node_type === 'redundancy_group')
@@ -416,18 +427,42 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Add hover effects
         node.on('mouseover', function(event, d) {
-            d3.select(this).select('circle')
+            const nodeElement = d3.select(this);
+
+            // Animate main circle
+            nodeElement.select('circle')
                 .transition()
                 .duration(200)
                 .attr('r', getNodeRadius(d) + 5)
-                .attr('stroke-width', 4);
+                .attr('stroke-width', d.id === {{ object.id }} ? 6 : 4);
+
+            // Animate blue highlight circle for current service
+            if (d.id === {{ object.id }}) {
+                nodeElement.selectAll('circle:nth-child(2)')
+                    .transition()
+                    .duration(200)
+                    .attr('r', getNodeRadius(d) + 13)
+                    .attr('stroke-width', 4);
+            }
         })
         .on('mouseout', function(event, d) {
-            d3.select(this).select('circle')
+            const nodeElement = d3.select(this);
+
+            // Reset main circle
+            nodeElement.select('circle')
                 .transition()
                 .duration(200)
                 .attr('r', getNodeRadius(d))
-                .attr('stroke-width', 3);
+                .attr('stroke-width', d.id === {{ object.id }} ? 5 : 3);
+
+            // Reset blue highlight circle for current service
+            if (d.id === {{ object.id }}) {
+                nodeElement.selectAll('circle:nth-child(2)')
+                    .transition()
+                    .duration(200)
+                    .attr('r', getNodeRadius(d) + 8)
+                    .attr('stroke-width', 3);
+            }
         });
     }
 
@@ -496,16 +531,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Helper functions
     function getNodeRadius(d) {
-        if (d.id === {{ object.id }}) return 30;
         if (d.node_type === 'redundancy_group') return 18;
         return 25;
     }
 
     function getNodeColor(d) {
-        if (d.id === {{ object.id }}) return colors.currentService;
         if (d.node_type === 'redundancy_group') return colors.redundancyGroup;
 
-        // Color based on health status
+        // Color based on health status (applies to all services including current)
         switch(d.health_status) {
             case 'down':
                 return colors.downService;
