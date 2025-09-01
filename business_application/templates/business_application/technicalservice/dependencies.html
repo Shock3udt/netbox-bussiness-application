@@ -531,6 +531,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Helper functions
     function getNodeRadius(d) {
+        if (d.id === {{ object.id }}) return 30;  // Current service larger
         if (d.node_type === 'redundancy_group') return 18;
         return 25;
     }
