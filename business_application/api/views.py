@@ -554,7 +554,7 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
 
             for termination in node.cabletermination_set.all():
                 cable = termination.cable
-                for t in cable.a_terminations + cable.b_terminations:
+                for t in cable.b_terminations:
                     if hasattr(t, 'device') and t.device and t.device.id not in visited_ids:
                         nodes.append(t.device)
                         visited_ids.add(t.device.id)
