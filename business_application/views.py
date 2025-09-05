@@ -1091,6 +1091,7 @@ class CalendarView(TemplateView):
 # New view for dependency graph visualization
 def dependency_graph_api(request, pk):  # pylint: disable=unused-argument
     """API endpoint to return dependency graph data for a technical service with directional filtering"""
+
     service = get_object_or_404(TechnicalService, pk=pk)
 
     def collect_upstream_dependencies(service, visited=None, depth=0, max_depth=10):

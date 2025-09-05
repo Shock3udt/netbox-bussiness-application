@@ -234,6 +234,7 @@ class AlertCorrelationEngine:
         # This includes OK events, low priority events, etc.
         return True
 
+
     def _should_create_incident(self, event: Event) -> bool:
         """
         Determine if an event should trigger incident creation.
@@ -287,7 +288,7 @@ class AlertCorrelationEngine:
         """
         # Add event to incident using the many-to-many relationship
         incident.events.add(event)
-
+        
         # Only escalate incident severity if event is more critical (never downgrade)
         event_severity_map = {'OK': 'low', 'LOW': 'low', 'MEDIUM': 'medium', 'HIGH': 'high', 'CRITICAL': 'critical'}
         severity_order = ['low', 'medium', 'high', 'critical']

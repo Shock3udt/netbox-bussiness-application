@@ -907,7 +907,12 @@ class AlertIngestionViewSet(ViewSet):
                     return target_obj, ContentType.objects.get_for_model(VirtualMachine)
 
             elif target_type == 'service':
+                # Handle GitLab service naming convention: "gitlab: <path_with_namespace>"
                 target_obj = TechnicalService.objects.filter(name=identifier).first()
+                if not target_obj and identifier.startswith('gitlab:'):
+                    # Only auto-create GitLab services
+                    logger.info(f"Creating GitLab service {identifier} for alert processing")
+                    target_obj = self._create_test_service(identifier)
                 if target_obj:
                     return target_obj, ContentType.objects.get_for_model(TechnicalService)
 
@@ -920,7 +925,29 @@ class AlertIngestionViewSet(ViewSet):
         logger.warning(f"Could not resolve target {target_type}:{identifier}, will create invalid event")
         return None, None
 
+    def _create_test_service(self, service_name):
+        """
+        Create a minimal test technical service for alert processing.
+        This is used when a service referenced in an alert doesn't exist.
+        """
+        try:
+            # Check if service already exists
+            existing_service = TechnicalService.objects.filter(name=service_name).first()
+            if existing_service:
+                return existing_service
 
+            # Create the service
+            service = TechnicalService.objects.create(
+                name=service_name,
+                service_type='technical'
+            )
+
+            logger.info(f"Created test service: {service_name}")
+            return service
+
+        except Exception as e:
+            logger.error(f"Error creating test service {service_name}: {e}")
+            return None
 
     def _process_standard_alert(self, standard_payload):
         """
