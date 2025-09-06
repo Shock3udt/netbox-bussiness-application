@@ -1090,11 +1090,12 @@ class CalendarView(TemplateView):
 
 # New view for dependency graph visualization
 def dependency_graph_api(request, pk):  # pylint: disable=unused-argument
-    """API endpoint to return dependency graph data for a technical service"""
+    """API endpoint to return dependency graph data for a technical service with directional filtering"""
+
     service = get_object_or_404(TechnicalService, pk=pk)
 
-    def collect_all_dependencies(service, visited=None, depth=0, max_depth=3):
-        """Recursively collect all upstream and downstream dependencies"""
+    def collect_upstream_dependencies(service, visited=None, depth=0, max_depth=10):
+        """Recursively collect ONLY upstream dependencies (directional)"""
         if visited is None:
             visited = set()
 
@@ -1105,33 +1106,47 @@ def dependency_graph_api(request, pk):  # pylint: disable=unused-argument
         nodes = {service}
         links = set()
 
-        # Get upstream dependencies
+        # Get upstream dependencies - only follow upstream direction
         for dep in service.get_upstream_dependencies():
             upstream_service = dep.upstream_service
             nodes.add(upstream_service)
 
-            # Always add direct links - frontend will handle redundancy grouping
+            # Add link from upstream to current service
             links.add((upstream_service.id, service.id, dep.dependency_type, dep.name or f"Dependency {dep.id}"))
 
-            # Recursively get upstream dependencies
+            # Recursively collect upstream dependencies of upstream service
             if depth < max_depth:
-                upstream_nodes, upstream_links = collect_all_dependencies(
+                upstream_nodes, upstream_links = collect_upstream_dependencies(
                     upstream_service, visited.copy(), depth + 1, max_depth
                 )
                 nodes.update(upstream_nodes)
                 links.update(upstream_links)
 
-        # Get downstream dependencies
+        return nodes, links
+
+    def collect_downstream_dependencies(service, visited=None, depth=0, max_depth=10):
+        """Recursively collect ONLY downstream dependencies (directional)"""
+        if visited is None:
+            visited = set()
+
+        if service.id in visited or depth > max_depth:
+            return set(), set()
+
+        visited.add(service.id)
+        nodes = {service}
+        links = set()
+
+        # Get downstream dependencies - only follow downstream direction
         for dep in service.get_downstream_dependencies():
             downstream_service = dep.downstream_service
             nodes.add(downstream_service)
 
-            # Always add direct links - frontend will handle redundancy grouping
+            # Add link from current service to downstream service
             links.add((service.id, downstream_service.id, dep.dependency_type, dep.name or f"Dependency {dep.id}"))
 
-            # Recursively get downstream dependencies
+            # Recursively collect downstream dependencies of downstream service
             if depth < max_depth:
-                downstream_nodes, downstream_links = collect_all_dependencies(
+                downstream_nodes, downstream_links = collect_downstream_dependencies(
                     downstream_service, visited.copy(), depth + 1, max_depth
                 )
                 nodes.update(downstream_nodes)
@@ -1139,8 +1154,15 @@ def dependency_graph_api(request, pk):  # pylint: disable=unused-argument
 
         return nodes, links
 
-    # Collect all nodes and links
-    all_nodes, all_links = collect_all_dependencies(service)
+    # Collect upstream dependencies starting from current service
+    upstream_nodes, upstream_links = collect_upstream_dependencies(service)
+
+    # Collect downstream dependencies starting from current service
+    downstream_nodes, downstream_links = collect_downstream_dependencies(service)
+
+    # Combine results (current service will be in both sets, but that's fine for set operations)
+    all_nodes = upstream_nodes.union(downstream_nodes)
+    all_links = upstream_links.union(downstream_links)
 
     # Convert to JSON format
     nodes_data = []
