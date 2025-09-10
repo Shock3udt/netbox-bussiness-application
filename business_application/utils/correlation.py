@@ -32,9 +32,12 @@ class AlertCorrelationEngine:
     def correlate_alert(self, event: Event) -> Optional[Incident]:
         """
         Main correlation method. Processes an event and either:
-        1. Adds it to an existing incident
-        2. Creates a new incident
+        1. Adds it to an existing incident (ALL events if incident exists)
+        2. Creates a new incident (only for triggered, non-low/OK events)
         3. Returns None if no correlation is needed
+
+        Updated behavior: ALL events on affected resources are assigned to
+        existing incidents, but only meaningful events create new incidents.
         """
         try:
             # Skip correlation for invalid events
@@ -65,19 +68,22 @@ class AlertCorrelationEngine:
             if existing_incident:
                 self._add_event_to_incident(event, existing_incident)
                 self.logger.info(
-                    f"Added event {event.id} to incident {existing_incident.id}"
+                    f"Added event {event.id} (status: {event.status}, "
+                    f"criticality: {event.criticallity}) to existing incident {existing_incident.id}"
                 )
                 return existing_incident
 
             if self._should_create_incident(event):
                 incident = self._create_incident(event, technical_services)
                 self.logger.info(
-                    f"Created new incident {incident.id} for event {event.id}"
+                    f"Created new incident {incident.id} for event {event.id} "
+                    f"(status: {event.status}, criticality: {event.criticallity})"
                 )
                 return incident
 
             self.logger.info(
-                f"Event {event.id} does not require incident creation"
+                f"Event {event.id} (status: {event.status}, criticality: {event.criticallity}) "
+                f"does not require incident creation and no existing incident found"
             )
             return None
 
@@ -219,26 +225,28 @@ class AlertCorrelationEngine:
     ) -> bool:
         """
         Determine if an event should be correlated with an incident.
+        Now assigns ALL events (including OK/low priority) to existing incidents.
         """
+        # Don't add duplicate events (same dedup_id)
         if incident.events.filter(dedup_id=event.dedup_id).exists():
             return False
 
-        # Map both event and incident severities to numeric values for comparison
-        event_severity_map = {'LOW': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4}
-        incident_severity_map = {'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
+        # Assign ALL events to existing incidents, regardless of severity/status
+        # This includes OK events, low priority events, etc.
+        return True
 
-        event_severity = event_severity_map.get(event.criticallity, 2)
-        incident_severity = incident_severity_map.get(incident.severity, 2)
-
-        return event_severity >= incident_severity - 1
 
     def _should_create_incident(self, event: Event) -> bool:
         """
         Determine if an event should trigger incident creation.
+        Only creates incidents for triggered events with meaningful criticality.
         """
+        # Only triggered events can create incidents
         if event.status != 'triggered':
             return False
-        if event.criticallity in ['LOW']:
+
+        # Don't create incidents for OK/resolved events or low priority events
+        if event.criticallity in ['LOW', 'OK']:
             return False
 
         return True
@@ -289,20 +297,27 @@ class AlertCorrelationEngine:
     def _add_event_to_incident(self, event: Event, incident: Incident):
         """
         Add an event to an existing incident.
+        Now handles ALL event types including OK/low priority events.
         """
         # Add event to incident using the many-to-many relationship
         incident.events.add(event)
-
-        # Escalate incident severity if event is more critical
-        event_severity_map = {'LOW': 'low', 'MEDIUM': 'medium', 'HIGH': 'high', 'CRITICAL': 'critical'}
+        
+        # Only escalate incident severity if event is more critical (never downgrade)
+        event_severity_map = {'OK': 'low', 'LOW': 'low', 'MEDIUM': 'medium', 'HIGH': 'high', 'CRITICAL': 'critical'}
         severity_order = ['low', 'medium', 'high', 'critical']
         mapped_event_severity = event_severity_map.get(event.criticallity, 'medium')
 
-        if severity_order.index(mapped_event_severity) > severity_order.index(incident.severity):
-            incident.severity = mapped_event_severity
-            incident.save()
+        current_incident_severity_index = severity_order.index(incident.severity)
+        event_severity_index = severity_order.index(mapped_event_severity)
 
-        # Update incident timestamp
+        # Only escalate, never downgrade incident severity
+        if event_severity_index > current_incident_severity_index:
+            incident.severity = mapped_event_severity
+            self.logger.info(
+                f"Escalated incident {incident.id} severity from {incident.severity} to {mapped_event_severity}"
+            )
+
+        # Always update incident timestamp to show activity
         incident.updated_at = timezone.now()
         incident.save()
 

@@ -554,7 +554,7 @@ class DeviceDownstreamAppsViewSet(ModelViewSet):
 
             for termination in node.cabletermination_set.all():
                 cable = termination.cable
-                for t in cable.a_terminations + cable.b_terminations:
+                for t in cable.b_terminations:
                     if hasattr(t, 'device') and t.device and t.device.id not in visited_ids:
                         nodes.append(t.device)
                         visited_ids.add(t.device.id)
@@ -924,56 +924,6 @@ class AlertIngestionViewSet(ViewSet):
 
         logger.warning(f"Could not resolve target {target_type}:{identifier}, will create invalid event")
         return None, None
-
-
-
-    def _create_test_device(self, device_name):
-        """
-        Create a minimal test device for alert processing.
-        This is used when a device referenced in an alert doesn't exist.
-        """
-        try:
-            from dcim.models import Device, DeviceType, DeviceRole, Site, Manufacturer
-
-            manufacturer, _ = Manufacturer.objects.get_or_create(
-                name='Unknown',
-                defaults={'name': 'Unknown', 'slug': 'unknown'}
-            )
-
-            device_type, _ = DeviceType.objects.get_or_create(
-                model='Unknown Device',
-                manufacturer=manufacturer,
-                defaults={
-                    'model': 'Unknown Device',
-                    'slug': 'unknown-device',
-                    'manufacturer': manufacturer
-                }
-            )
-
-            device_role, _ = DeviceRole.objects.get_or_create(
-                name='Alert Target',
-                defaults={'name': 'Alert Target', 'slug': 'alert-target'}
-            )
-
-            site, _ = Site.objects.get_or_create(
-                name='Unknown Site',
-                defaults={'name': 'Unknown Site', 'slug': 'unknown-site'}
-            )
-
-            # Create the device
-            device = Device.objects.create(
-                name=device_name,
-                device_type=device_type,
-                device_role=device_role,
-                site=site
-            )
-
-            logger.info(f"Created test device: {device_name}")
-            return device
-
-        except Exception as e:
-            logger.error(f"Error creating test device {device_name}: {e}")
-            return None
 
     def _create_test_service(self, service_name):
         """
