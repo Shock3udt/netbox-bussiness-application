@@ -9,6 +9,8 @@ class BusinessApplicationConfig(PluginConfig):
     min_version = "4.1.0"  # Minimum required NetBox version
     max_version = "4.3.0"  # Minimum required NetBox version
     default_settings = {
+        'pagerduty_events_api_key': '',  # PagerDuty Events API v2 routing key for incident creation
+        'pagerduty_incident_creation_enabled': False,  # Enable/disable automatic PagerDuty incident creation
     }
     installed_apps = [
         'django_htmx',

@@ -680,6 +680,14 @@ class Incident(NetBoxModel):
     reporter        = models.CharField(max_length=120, blank=True)
     commander       = models.CharField(max_length=120, blank=True, help_text='Incident commander')
 
+    # PagerDuty Integration
+    pagerduty_dedup_key = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text='PagerDuty deduplication key returned when incident was created'
+    )
+
     class Meta:
         ordering = ['-created_at']
 
