@@ -28,4 +28,4 @@ staticfiles/
 media/
 
 local_requirements.txt
-.*
+

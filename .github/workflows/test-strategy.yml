@@ -1,0 +1,158 @@
+name: Comprehensive Testing Strategy
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Fast unit tests with SQLite (runs on every push)
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        git clone --depth 1 --branch v4.2.7 https://github.com/netbox-community/netbox.git /tmp/netbox
+        pip install -r /tmp/netbox/requirements.txt
+        pip install -r requirements.txt
+        pip install pytest pytest-django coverage
+    
+    - name: Run unit tests (SQLite - Fast)
+      run: |
+        cd /tmp/netbox/netbox
+        cp $GITHUB_WORKSPACE/business_application/test_settings.py ./
+        export DJANGO_SETTINGS_MODULE=test_settings
+        export PYTHONPATH=/tmp/netbox/netbox:$GITHUB_WORKSPACE
+        python manage.py migrate --settings=test_settings
+        python -m pytest $GITHUB_WORKSPACE/business_application/tests/ -v -k "not integration" --tb=short
+
+  # Comprehensive integration tests with PostgreSQL (runs on main/develop)
+  integration-tests:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: netbox
+          POSTGRES_USER: netbox
+          POSTGRES_DB: netbox
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install PostgreSQL client
+      run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+    - name: Wait for services
+      run: |
+        # Wait for PostgreSQL with authentication test
+        timeout=60; counter=0
+        while [ $counter -lt $timeout ]; do
+          if pg_isready -h localhost -p 5432 -U netbox && 
+             PGPASSWORD=netbox psql -h localhost -U netbox -d netbox -c 'SELECT 1;' >/dev/null 2>&1; then
+            echo "PostgreSQL ready and authenticated!"
+            break
+          fi
+          sleep 2; counter=$((counter + 1))
+        done
+      env:
+        PGPASSWORD: netbox
+
+    - name: Install dependencies
+      run: |
+        git clone --depth 1 --branch v4.2.7 https://github.com/netbox-community/netbox.git /tmp/netbox
+        pip install -r /tmp/netbox/requirements.txt
+        pip install -r requirements.txt
+        pip install pytest pytest-django coverage
+
+    - name: Configure NetBox
+      run: |
+        cd /tmp/netbox/netbox
+        cp netbox/configuration_example.py netbox/configuration.py
+        cat >> netbox/configuration.py << EOF
+        
+        SECRET_KEY = 'integration-test-secret-key'
+        DATABASES = {
+            'default': {
+                'NAME': 'netbox',
+                'USER': 'netbox', 
+                'PASSWORD': 'netbox',
+                'HOST': '127.0.0.1',
+                'PORT': 5432,
+                'ENGINE': 'django.db.backends.postgresql',
+            }
+        }
+        REDIS = {
+            'tasks': {'HOST': 'localhost', 'PORT': 6379, 'DATABASE': 0, 'SSL': False},
+            'caching': {'HOST': 'localhost', 'PORT': 6379, 'DATABASE': 1, 'SSL': False}
+        }
+        PLUGINS = ['business_application']
+        DEBUG = True
+        EOF
+
+    - name: Run integration tests (PostgreSQL - Comprehensive)
+      run: |
+        cd /tmp/netbox/netbox
+        export DJANGO_SETTINGS_MODULE=netbox.settings
+        export PYTHONPATH=/tmp/netbox/netbox:$GITHUB_WORKSPACE
+        python manage.py migrate
+        python -m pytest $GITHUB_WORKSPACE/business_application/tests/ -v --tb=short
+
+  # Smoke test - just verify plugin loads
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Smoke test (plugin import)
+      run: |
+        git clone --depth 1 --branch v4.2.7 https://github.com/netbox-community/netbox.git /tmp/netbox
+        pip install -r /tmp/netbox/requirements.txt
+        pip install -r requirements.txt
+        cd /tmp/netbox/netbox
+        export PYTHONPATH=/tmp/netbox/netbox:$GITHUB_WORKSPACE
+        python -c "
+        import sys
+        sys.path.append('$GITHUB_WORKSPACE')
+        import business_application
+        print(f'✅ Plugin {business_application.__name__} imported successfully')
+        print(f'📦 Version: {getattr(business_application, \"__version__\", \"unknown\")}')
+        "
