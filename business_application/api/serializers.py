@@ -224,6 +224,7 @@ class IncidentSerializer(serializers.ModelSerializer):
             'events_count',
             'reporter',
             'commander',
+            'pagerduty_dedup_key',
             'created',
             'last_updated',
         ]
