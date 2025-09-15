@@ -241,16 +241,13 @@ class PagerDutyIncidentManager:
 
     def _get_netbox_incident_url(self, incident: Incident) -> str:
         """Generate the full NetBox URL for the incident."""
-        base_url = getattr(settings, 'BASE_URL', 'https://netbox.example.com')
-        if base_url.endswith('/'):
-            base_url = base_url.rstrip('/')
+        run_env = os.environ.get('RUN_ENV', '').lower()
+        base_url = f"https://netbox.corp{".preprod" if run_env == "preprod" else ""}.redhat.com"
 
         try:
-            # Use the incident's get_absolute_url method
             relative_url = incident.get_absolute_url()
             return f"{base_url}{relative_url}"
         except Exception:
-            # Fallback to manual construction
             return f"{base_url}/plugins/business-application/incidents/{incident.id}/"
 
     def _send_pagerduty_request(self, payload: Dict) -> Optional[Dict]:
@@ -264,10 +261,10 @@ class PagerDutyIncidentManager:
                 self.api_url,
                 data=json.dumps(payload),
                 headers=headers,
-                timeout=30  # 30 second timeout
+                timeout=30
             )
 
-            response.raise_for_status()  # Raise an exception for bad status codes
+            response.raise_for_status()
 
             response_data = response.json()
             self.logger.debug(f"PagerDuty response: {json.dumps(response_data, indent=2)}")
@@ -285,7 +282,6 @@ class PagerDutyIncidentManager:
             return None
 
 
-# Convenience function for easy importing
 def create_pagerduty_incident(netbox_incident: Incident) -> Optional[Dict]:
     """
     Convenience function to create a PagerDuty incident.

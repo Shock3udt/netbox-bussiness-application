@@ -219,12 +219,10 @@ class IncidentForm(forms.ModelForm):
     """
     Form for creating and editing Incident objects.
     """
-    # Optional: Add checkbox for testing PagerDuty integration
     create_pagerduty_incident = forms.BooleanField(
         required=False,
         initial=False,
         label='Create PagerDuty Incident',
-        help_text='For testing: Create a corresponding incident in PagerDuty'
     )
 
     class Meta:
@@ -263,7 +261,6 @@ class IncidentForm(forms.ModelForm):
 
         # If this is a new incident and user checked the PagerDuty checkbox
         if commit and is_new_incident and self.cleaned_data.get('create_pagerduty_incident'):
-            # Import here to avoid circular imports
             from .utils.pagerduty_integration import create_pagerduty_incident
             import logging
 
