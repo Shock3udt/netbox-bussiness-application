@@ -241,8 +241,8 @@ class PagerDutyIncidentManager:
 
     def _get_netbox_incident_url(self, incident: Incident) -> str:
         """Generate the full NetBox URL for the incident."""
-        run_env = os.environ.get('RUN_ENV', '').lower()
-        base_url = f"https://netbox.corp{".preprod" if run_env == "preprod" else ""}.redhat.com"
+        server_name = os.environ.get('SERVER_NAME', 'netbox.corp.redhat.com')
+        base_url = f"https://{server_name}"
 
         try:
             relative_url = incident.get_absolute_url()
