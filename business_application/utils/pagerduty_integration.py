@@ -3,6 +3,7 @@ import requests
 import json
 import uuid
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
 from django.conf import settings
@@ -26,17 +27,34 @@ class PagerDutyIncidentManager:
 
     @property
     def is_enabled(self) -> bool:
-        """Check if PagerDuty integration is enabled in settings."""
-        return getattr(settings, 'PLUGINS_CONFIG', {}).get(
+        """Check if PagerDuty integration is enabled in settings or environment."""
+        # Check plugin configuration first
+        plugin_enabled = getattr(settings, 'PLUGINS_CONFIG', {}).get(
             'business_application', {}
         ).get('pagerduty_incident_creation_enabled', False)
 
+        # Fall back to environment variable
+        env_enabled = os.environ.get('PAGERDUTY_ENABLED', 'true').lower() == 'true'
+
+        # Enable if we have a routing key (either from config or env)
+        has_routing_key = bool(self.routing_key)
+
+        return plugin_enabled or env_enabled or has_routing_key
+
     @property
     def routing_key(self) -> Optional[str]:
-        """Get the PagerDuty routing key from settings."""
-        return getattr(settings, 'PLUGINS_CONFIG', {}).get(
+        """Get the PagerDuty routing key from settings or environment variables."""
+        # Try plugin configuration first
+        plugin_key = getattr(settings, 'PLUGINS_CONFIG', {}).get(
             'business_application', {}
-        ).get('pagerduty_events_api_key', '').strip()
+        ).get('pagerduty_events_api_key', '') or ''
+
+        # Fall back to environment variables
+        env_key = os.environ.get('PAGERDUTY_ROUTING_KEY', '') or os.environ.get('PAGERDUTY_EVENTS_API_KEY', '')
+
+        # Use the first non-empty key found
+        key = plugin_key or env_key
+        return key.strip() if key else None
 
     def create_pagerduty_incident(self, netbox_incident: Incident) -> Optional[Dict]:
         """
