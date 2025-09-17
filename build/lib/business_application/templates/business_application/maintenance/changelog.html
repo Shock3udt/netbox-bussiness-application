@@ -1,0 +1,6 @@
+{% extends 'generic/object_changelog.html' %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'plugins:business_application:maintenance_list' %}">Maintenance</a></li>
+<li class="breadcrumb-item"><a href="{{ object.get_absolute_url }}">{{ object.description|truncatechars:50 }}</a></li>
+{% endblock %}

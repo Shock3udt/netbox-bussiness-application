@@ -1,0 +1,97 @@
+{% extends 'generic/object.html' %}
+{% load buttons %}
+{% load custom_links %}
+{% load helpers %}
+{% load plugins %}
+{% load render_table from django_tables2 %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'plugins:business_application:maintenance_list' %}">Maintenance</a></li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <!-- Left Column: Maintenance Details -->
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                Maintenance Details
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <td>Status</td>
+                        <td><span class="badge badge-{{ object.status }}">{{ object.get_status_display }}</span></td>
+                    </tr>
+                    <tr>
+                        <td>Description</td>
+                        <td>{{ object.description }}</td>
+                    </tr>
+                    <tr>
+                        <td>Contact</td>
+                        <td>{{ object.contact }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h5 class="card-header">
+                Schedule
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <td>Planned Start</td>
+                        <td>{{ object.planned_start|date:"M d, Y H:i" }}</td>
+                    </tr>
+                    <tr>
+                        <td>Planned End</td>
+                        <td>{{ object.planned_end|date:"M d, Y H:i" }}</td>
+                    </tr>
+                    <tr>
+                        <td>Duration</td>
+                        <td>
+                            {% with duration=object.planned_end|timesince:object.planned_start %}
+                                {{ duration }}
+                            {% endwith %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        {% include 'inc/panels/custom_fields.html' %}
+        {% include 'inc/panels/tags.html' %}
+        {% include 'inc/panels/comments.html' %}
+        {% plugin_left_page object %}
+    </div>
+
+    <!-- Right Column: Related Object -->
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                Affected Object
+            </h5>
+            <div class="card-body">
+                {% if object.obj %}
+                    <table class="table table-hover attr-table">
+                        <tr>
+                            <td>Object Type</td>
+                            <td>{{ object.content_type.model|capfirst }}</td>
+                        </tr>
+                        <tr>
+                            <td>Object</td>
+                            <td><a href="{{ object.obj.get_absolute_url }}">{{ object.obj }}</a></td>
+                        </tr>
+                    </table>
+                {% else %}
+                    <p>No affected object specified.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% plugin_right_page object %}
+    </div>
+</div>
+{% endblock %}
