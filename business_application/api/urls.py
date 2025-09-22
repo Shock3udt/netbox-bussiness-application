@@ -1,3 +1,5 @@
+# api/urls.py - Updated with incident automation endpoints
+
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 from business_application.api.views import (
@@ -5,6 +7,7 @@ from business_application.api.views import (
     EventSourceViewSet, EventViewSet, MaintenanceViewSet, ChangeTypeViewSet, ChangeViewSet,
     IncidentViewSet, DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet
 )
+from business_application.api.incident_automation_views import IncidentAutomationViewSet
 
 router = DefaultRouter()
 
@@ -19,11 +22,10 @@ router.register(r'change-types', ChangeTypeViewSet, basename='changetype')
 router.register(r'changes', ChangeViewSet, basename='change')
 router.register(r'incidents', IncidentViewSet, basename='incident')
 
-# Complex endpoints for downstream application analysis
 router.register(r'clusters/downstream-applications', ClusterDownstreamAppsViewSet, basename='cluster-downstream-applications')
+router.register(r'incident-automation', IncidentAutomationViewSet, basename='incident-automation')
 
 urlpatterns = router.urls + [
-    # Device downstream applications (custom endpoints)
     path(
         'devices/downstream-applications/<int:pk>/',
         DeviceDownstreamAppsViewSet.as_view({'get': 'retrieve'}),
