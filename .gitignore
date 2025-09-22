@@ -29,4 +29,3 @@ media/
 netbox_business_application.egg-info/
 
 local_requirements.txt
-.*
