@@ -6,8 +6,6 @@ __pycache__/
 # Virtual environment
 venv/
 env/
-.venv/
-.env
 
 # IDE-specific files
 .vscode/
@@ -24,6 +22,3 @@ db.sqlite3
 # Static and media files (if applicable)
 staticfiles/
 media/
-
-local_requirements.txt
-.*
