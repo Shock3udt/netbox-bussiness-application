@@ -24,8 +24,6 @@ db.sqlite3
 # Static and media files (if applicable)
 staticfiles/
 media/
-.build/
-
-netbox_business_application.egg-info/
 
 local_requirements.txt
+.*
