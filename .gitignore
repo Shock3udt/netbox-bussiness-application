@@ -24,3 +24,5 @@ db.sqlite3
 staticfiles/
 media/
 .build/
+
+netbox_business_application.egg-info/
