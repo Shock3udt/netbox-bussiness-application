@@ -1,7 +1,9 @@
 from django.urls import path, include
 from utilities.urls import get_model_urls
+from netbox.views import generic
 
 from . import views
+from .models import PagerDutyTemplate, BusinessApplication, TechnicalService, ServiceDependency
 
 app_name = 'business_application'
 
@@ -12,7 +14,8 @@ urlpatterns = [
     path('business-application/add/', views.BusinessApplicationCreateView.as_view(), name='businessapplication_add'),
     path('business-application/<int:pk>/edit/', views.BusinessApplicationEditView.as_view(), name='businessapplication_edit'),
     path('business-application/<int:pk>/delete/', views.BusinessApplicationDeleteView.as_view(), name='businessapplication_delete'),
-    path('business-application/<int:pk>/changelog/', views.BusinessApplicationChangeLogView.as_view(), name='businessapplication_changelog'),
+    path('business-application/<int:pk>/changelog/', generic.ObjectChangeLogView.as_view(), name='businessapplication_changelog', kwargs={'model': BusinessApplication}),
+    path('business-application/<int:pk>/journal/', generic.ObjectJournalView.as_view(), name='businessapplication_journal', kwargs={'model': BusinessApplication}),
     path('business-application/<int:pk>/', include(get_model_urls('business_application', 'businessapplication'))),
 
     # Technical Service URLs
@@ -21,11 +24,24 @@ urlpatterns = [
     path('technical-service/add/', views.TechnicalServiceCreateView.as_view(), name='technicalservice_add'),
     path('technical-service/<int:pk>/edit/', views.TechnicalServiceEditView.as_view(), name='technicalservice_edit'),
     path('technical-service/<int:pk>/delete/', views.TechnicalServiceDeleteView.as_view(), name='technicalservice_delete'),
-    path('technical-service/<int:pk>/changelog/', views.TechnicalServiceChangeLogView.as_view(), name='technicalservice_changelog'),
+    path('technical-service/<int:pk>/changelog/', generic.ObjectChangeLogView.as_view(), name='technicalservice_changelog', kwargs={'model': TechnicalService}),
+    path('technical-service/<int:pk>/journal/', generic.ObjectJournalView.as_view(), name='technicalservice_journal', kwargs={'model': TechnicalService}),
     path('technical-service/<int:pk>/operations/', views.TechnicalServiceOperationsView.as_view(), name='technicalservice_operations'),
     path('technical-service/<int:pk>/dependencies/', views.TechnicalServiceDependenciesView.as_view(), name='technicalservice_dependencies'),
     path('technical-service/<int:pk>/dependencies/api/', views.dependency_graph_api, name='technicalservice_dependencies_api'),
+    path('technical-service/<int:pk>/pagerduty/', views.TechnicalServicePagerDutyView.as_view(), name='technicalservice_pagerduty'),
+    path('technical-service/<int:pk>/pagerduty/edit/', views.TechnicalServicePagerDutyEditView.as_view(), name='technicalservice_pagerduty_edit'),
     path('technical-service/<int:pk>/', include(get_model_urls('business_application', 'technicalservice'))),
+
+    # PagerDuty Template URLs
+    path('pagerduty-template/', views.PagerDutyTemplateListView.as_view(), name='pagerdutytemplate_list'),
+    path('pagerduty-template/<int:pk>/', views.PagerDutyTemplateDetailView.as_view(), name='pagerdutytemplate_detail'),
+    path('pagerduty-template/add/', views.PagerDutyTemplateCreateView.as_view(), name='pagerdutytemplate_add'),
+    path('pagerduty-template/<int:pk>/edit/', views.PagerDutyTemplateEditView.as_view(), name='pagerdutytemplate_edit'),
+    path('pagerduty-template/<int:pk>/delete/', views.PagerDutyTemplateDeleteView.as_view(), name='pagerdutytemplate_delete'),
+    path('pagerduty-template/<int:pk>/changelog/', generic.ObjectChangeLogView.as_view(), name='pagerdutytemplate_changelog', kwargs={'model': PagerDutyTemplate}),
+    path('pagerduty-template/<int:pk>/journal/', generic.ObjectJournalView.as_view(), name='pagerdutytemplate_journal', kwargs={'model': PagerDutyTemplate}),
+    path('pagerduty-template/<int:pk>/', include(get_model_urls('business_application', 'pagerdutytemplate'))),
 
     # Service Dependency URLs
     path('service-dependency/', views.ServiceDependencyListView.as_view(), name='servicedependency_list'),
@@ -33,6 +49,8 @@ urlpatterns = [
     path('service-dependency/add/', views.ServiceDependencyCreateView.as_view(), name='servicedependency_add'),
     path('service-dependency/<int:pk>/edit/', views.ServiceDependencyEditView.as_view(), name='servicedependency_edit'),
     path('service-dependency/<int:pk>/delete/', views.ServiceDependencyDeleteView.as_view(), name='servicedependency_delete'),
+    path('service-dependency/<int:pk>/changelog/', generic.ObjectChangeLogView.as_view(), name='servicedependency_changelog', kwargs={'model': ServiceDependency}),
+    path('service-dependency/<int:pk>/journal/', generic.ObjectJournalView.as_view(), name='servicedependency_journal', kwargs={'model': ServiceDependency}),
     path('service-dependency/<int:pk>/', include(get_model_urls('business_application', 'servicedependency'))),
 
     # Event Source URLs

@@ -16,6 +16,10 @@ _business_menu_items = (
         link='plugins:business_application:servicedependency_list',
         link_text='Service Dependencies',
     ),
+    PluginMenuItem(
+        link='plugins:business_application:pagerdutytemplate_list',
+        link_text='PagerDuty Templates',
+    ),
 )
 
 _operations_menu_items = (

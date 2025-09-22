@@ -1,0 +1,370 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load business_app_filters %}
+
+{% block breadcrumbs %}
+<li class="breadcrumb-item"><a href="{% url 'dcim:device_list' %}">Devices</a></li>
+<li class="breadcrumb-item"><a href="{{ object.get_absolute_url }}">{{ object.name }}</a></li>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 col-xl-8">
+        <!-- Events Timeline -->
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-timeline-clock"></i> Device Events Timeline
+            </h5>
+            <div class="card-body">
+                {% if timeline_entries %}
+                    <div class="timeline">
+                        {% for entry in timeline_entries %}
+                        <div class="timeline-item">
+                            <div class="timeline-marker">
+                                {% if entry.status == 'triggered' %}
+                                    <i class="{{ entry.icon }} text-danger"></i>
+                                {% elif entry.status == 'ok' %}
+                                    <i class="{{ entry.icon }} text-success"></i>
+                                {% elif entry.status == 'suppressed' %}
+                                    <i class="{{ entry.icon }} text-secondary"></i>
+                                {% else %}
+                                    <i class="{{ entry.icon }} text-warning"></i>
+                                {% endif %}
+                            </div>
+                            <div class="timeline-content">
+                                <div class="timeline-header">
+                                    <h6 class="timeline-title mb-1">
+                                        {{ entry.title }}
+                                        <small class="text-muted">
+                                            from <strong>{{ entry.event_source }}</strong>
+                                        </small>
+                                    </h6>
+                                    <small class="text-muted">
+                                        <i class="mdi mdi-clock-outline"></i>
+                                        {{ entry.timestamp|date:"M d, Y H:i:s" }}
+                                        {% if entry.dedup_id %}
+                                        <span class="ms-2">
+                                            <i class="mdi mdi-identifier"></i>
+                                            <code>{{ entry.dedup_id|truncatechars:20 }}</code>
+                                        </span>
+                                        {% endif %}
+                                    </small>
+                                </div>
+                                <div class="timeline-body">
+                                    <p class="mb-2">{{ entry.description }}</p>
+
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <strong>Status:</strong>
+                                            {{ entry.status|event_status_badge }}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Severity:</strong>
+                                            {{ entry.severity|event_criticality_badge }}
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-2">
+                                        <a href="{{ entry.object.get_absolute_url }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="mdi mdi-open-in-new"></i> View Event Details
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="mdi mdi-information"></i>
+                        No events found for this device.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+        <!-- Event Statistics -->
+        <div class="card mb-4">
+            <h5 class="card-header">
+                <i class="mdi mdi-chart-bar"></i> Event Statistics
+            </h5>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="stat-item">
+                            <div class="stat-value text-primary">{{ event_stats.total }}</div>
+                            <div class="stat-label">Total Events</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stat-item">
+                            <div class="stat-value text-danger">{{ event_stats.triggered }}</div>
+                            <div class="stat-label">Triggered</div>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="stat-item">
+                            <div class="stat-value text-success">{{ event_stats.ok }}</div>
+                            <div class="stat-label">OK</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stat-item">
+                            <div class="stat-value text-secondary">{{ event_stats.suppressed }}</div>
+                            <div class="stat-label">Suppressed</div>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <h6 class="text-muted mb-2">By Severity</h6>
+                <div class="row">
+                    <div class="col-4">
+                        <div class="stat-item">
+                            <div class="stat-value text-danger">{{ event_stats.critical }}</div>
+                            <div class="stat-label">Critical</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-item">
+                            <div class="stat-value text-warning">{{ event_stats.warning }}</div>
+                            <div class="stat-label">Warning</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-item">
+                            <div class="stat-value text-info">{{ event_stats.info }}</div>
+                            <div class="stat-label">Info</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Related Services -->
+        {% if related_services %}
+        <div class="card mb-4">
+            <h5 class="card-header">
+                <i class="mdi mdi-server-network"></i> Related Services
+            </h5>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    {% for service in related_services %}
+                    <li class="mb-2">
+                        <a href="{{ service.get_absolute_url }}" class="text-decoration-none">
+                            <i class="mdi mdi-server"></i> {{ service.name }}
+                        </a>
+                        <small class="text-muted ms-2">({{ service.service_type|title }})</small>
+                        <span class="float-end">
+                            {% if service.health_status == 'healthy' %}
+                                <span class="badge bg-success">Healthy</span>
+                            {% elif service.health_status == 'degraded' %}
+                                <span class="badge bg-warning">Degraded</span>
+                            {% elif service.health_status == 'down' %}
+                                <span class="badge bg-danger">Down</span>
+                            {% elif service.health_status == 'under_maintenance' %}
+                                <span class="badge bg-info">Maintenance</span>
+                            {% endif %}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Related Incidents -->
+        {% if related_incidents %}
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-alert-multiple"></i> Related Incidents
+            </h5>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    {% for incident in related_incidents %}
+                    <li class="mb-2">
+                        <a href="{{ incident.get_absolute_url }}" class="text-decoration-none">
+                            <i class="mdi mdi-alert-circle"></i> {{ incident.title|truncatechars:40 }}
+                        </a>
+                        <div class="mt-1">
+                            {{ incident.status|incident_status_badge }}
+                            {{ incident.severity|incident_severity_badge }}
+                            <small class="text-muted ms-2">{{ incident.created_at|date:"M d, H:i" }}</small>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Custom CSS for device events timeline -->
+<style>
+/* Statistics styling */
+.stat-item {
+    text-align: center;
+    padding: 0.5rem 0;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color, #6c757d);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Timeline styling (reuse from incident timeline) */
+.timeline {
+    position: relative;
+    padding: 20px 0;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 30px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--bs-border-color, #495057);
+}
+
+.timeline-item {
+    position: relative;
+    margin-bottom: 30px;
+    padding-left: 70px;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: 20px;
+    top: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--bs-body-bg, #212529);
+    border: 2px solid var(--bs-border-color, #495057);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.timeline-marker i {
+    font-size: 12px;
+}
+
+.timeline-content {
+    background: var(--bs-gray-800, #343a40);
+    border: 1px solid var(--bs-border-color, #495057);
+    border-radius: 6px;
+    padding: 15px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    color: var(--bs-body-color, #dee2e6);
+}
+
+.timeline-header {
+    border-bottom: 1px solid var(--bs-border-color, #495057);
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+}
+
+.timeline-title {
+    font-weight: 600;
+    color: var(--bs-body-color, #dee2e6);
+}
+
+.timeline-body {
+    color: var(--bs-secondary-color, #adb5bd);
+}
+
+.timeline-body strong {
+    color: var(--bs-body-color, #dee2e6);
+}
+
+.timeline-body a {
+    color: var(--bs-link-color, #6ea8fe);
+}
+
+.timeline-body a:hover {
+    color: var(--bs-link-hover-color, #8bb9fe);
+}
+
+.timeline-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Dark theme specific overrides */
+[data-bs-theme="dark"] .timeline-content {
+    background: #2b3035;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .timeline-marker {
+    background: #212529;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .timeline::before {
+    background: #495057;
+}
+
+[data-bs-theme="dark"] .timeline-header {
+    border-bottom-color: #495057;
+}
+
+/* Light theme fallback */
+[data-bs-theme="light"] .timeline-content {
+    background: #f8f9fa;
+    border-color: #dee2e6;
+    color: #212529;
+}
+
+[data-bs-theme="light"] .timeline-marker {
+    background: #ffffff;
+    border-color: #dee2e6;
+}
+
+[data-bs-theme="light"] .timeline::before {
+    background: #dee2e6;
+}
+
+[data-bs-theme="light"] .timeline-title {
+    color: #212529;
+}
+
+[data-bs-theme="light"] .timeline-body {
+    color: #6c757d;
+}
+
+[data-bs-theme="light"] .timeline-header {
+    border-bottom-color: #dee2e6;
+}
+
+@media (max-width: 768px) {
+    .timeline-item {
+        padding-left: 50px;
+    }
+
+    .timeline::before {
+        left: 20px;
+    }
+
+    .timeline-marker {
+        left: 10px;
+    }
+}
+</style>
+{% endblock %}

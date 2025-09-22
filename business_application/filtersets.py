@@ -2,7 +2,7 @@ from django.db.models import Q
 from netbox.filtersets import NetBoxModelFilterSet
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
 )
 
 class BusinessApplicationFilter(NetBoxModelFilterSet):
@@ -164,3 +164,11 @@ class IncidentFilter(NetBoxModelFilterSet):
     class Meta:
         model = Incident
         fields = ['status', 'severity', 'responders', 'affected_services', 'reporter', 'commander']
+
+class PagerDutyTemplateFilter(NetBoxModelFilterSet):
+    """
+    Filters for the PagerDutyTemplate model.
+    """
+    class Meta:
+        model = PagerDutyTemplate
+        fields = ['name', 'template_type']
