@@ -228,6 +228,7 @@ class IncidentSerializer(serializers.ModelSerializer):
             'last_updated',
         ]
 
+
 class PagerDutyTemplateSerializer(serializers.ModelSerializer):
     """
     Serializer for the PagerDutyTemplate model.
