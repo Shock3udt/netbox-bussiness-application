@@ -1,7 +1,0 @@
-{% extends 'generic/object_journal.html' %}
-
-{% block breadcrumbs %}
-    {{ block.super }}
-    <li class="breadcrumb-item"><a href="{% url 'plugins:business_application:incident_list' %}">Incidents</a></li>
-    <li class="breadcrumb-item"><a href="{{ object.get_absolute_url }}">{{ object }}</a></li>
-{% endblock %}

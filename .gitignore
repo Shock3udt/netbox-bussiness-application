@@ -22,3 +22,4 @@ db.sqlite3
 # Static and media files (if applicable)
 staticfiles/
 media/
+.build/
