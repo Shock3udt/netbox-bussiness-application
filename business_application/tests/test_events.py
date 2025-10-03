@@ -1,3 +1,5 @@
+from datetime import timezone
+
 from business_application.models import Event, EventStatus, EventCrit
 from dcim.models import Device
 from django.contrib.contenttypes.models import ContentType

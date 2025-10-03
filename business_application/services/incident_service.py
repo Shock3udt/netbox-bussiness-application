@@ -275,7 +275,6 @@ class IncidentAutoCreationService:
         if max_depth <= 0:
             return False
 
-        # Check direct dependencies
         direct_upstream = ServiceDependency.objects.filter(
             downstream_service=dependent_service,
             upstream_service=upstream_service
@@ -284,7 +283,6 @@ class IncidentAutoCreationService:
         if direct_upstream:
             return True
 
-        # Check indirect dependencies
         for dep in dependent_service.get_upstream_dependencies():
             if self._is_service_dependent_on(dep.upstream_service, upstream_service, max_depth - 1):
                 return True
@@ -317,9 +315,8 @@ class IncidentAutoCreationService:
 
         for dep in service.get_upstream_dependencies():
             upstream_services.add(dep.upstream_service)
-            # Recursively get upstream services
             upstream_services.update(
-                self._get_all_upstream_services(dep.upstream_service, visited.copy())
+                self._get_all_upstream_services(dep.upstream_service, visited)
             )
 
         return upstream_services
