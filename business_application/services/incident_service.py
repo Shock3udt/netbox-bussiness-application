@@ -22,7 +22,6 @@ def _calculate_infrastructure_correlation(affected_components: List[Any],
     event_devices = [comp for comp in affected_components if isinstance(comp, Device)]
     event_vms = [comp for comp in affected_components if isinstance(comp, VirtualMachine)]
 
-    # Get infrastructure from incident's affected services
     incident_devices = set()
     incident_vms = set()
 
@@ -30,7 +29,6 @@ def _calculate_infrastructure_correlation(affected_components: List[Any],
         incident_devices.update(service.devices.all())
         incident_vms.update(service.vms.all())
 
-    # Calculate overlap
     device_overlap = len(set(event_devices) & incident_devices)
     vm_overlap = len(set(event_vms) & incident_vms)
 
@@ -51,9 +49,8 @@ def _identify_root_cause_components(affected_components: List[Any]) -> List[Any]
     services = [comp for comp in affected_components if isinstance(comp, TechnicalService)]
 
     if not services:
-        return affected_components[:1]  # Return first component if no services
+        return affected_components[:1]
 
-    # Find services with the fewest upstream dependencies (likely root causes)
     root_services = []
     min_upstream_count = float('inf')
 
@@ -91,8 +88,9 @@ class IncidentAutoCreationService:
     """
 
     def __init__(self):
-        self.correlation_window_minutes = 15  # Time window for correlating events
-        self.max_dependency_depth = 5  # Maximum depth to traverse in dependency graph
+        self.correlation_window_minutes = 15
+        self.max_dependency_depth = 3
+        self.correlation_threshold = 0.4
 
     def process_incoming_event(self, event: Event) -> Incident | None:
         """
@@ -101,18 +99,15 @@ class IncidentAutoCreationService:
         """
         logger.info(f"Processing incoming event: {event.id} - {event.message}")
 
-        # Skip if event is not in a triggering state
         if event.status not in [EventStatus.TRIGGERED]:
             logger.debug(f"Skipping event {event.id} - status is {event.status}")
             return None
 
-        # Find affected components from the event
         affected_components = self._get_affected_components_from_event(event)
         if not affected_components:
             logger.warning(f"No affected components found for event {event.id}")
             return None
 
-        # Look for existing incidents to correlate with
         existing_incident = self._find_correlating_incident(event, affected_components)
 
         if existing_incident:
@@ -129,13 +124,10 @@ class IncidentAutoCreationService:
         """
         components = []
 
-        # Direct object reference
         if event.obj:
             components.append(event.obj)
 
-        # Try to find related technical services
         if isinstance(event.obj, (Device, VirtualMachine)):
-            # Find technical services that use this device/VM
             related_services = TechnicalService.objects.filter(
                 Q(devices=event.obj) if isinstance(event.obj, Device)
                 else Q(vms=event.obj)
@@ -143,13 +135,11 @@ class IncidentAutoCreationService:
             components.extend(related_services)
 
         elif isinstance(event.obj, Cluster):
-            # Find services that use VMs in this cluster
             cluster_vms = VirtualMachine.objects.filter(cluster=event.obj)
             related_services = TechnicalService.objects.filter(vms__in=cluster_vms)
             components.extend(related_services)
 
         elif isinstance(event.obj, TechnicalService):
-            # Already a service
             pass
 
         return components
@@ -158,13 +148,9 @@ class IncidentAutoCreationService:
         """
         Find existing open incidents that should be correlated with this event.
         """
-        # Look for incidents in the correlation time window
-        correlation_threshold = timezone.now() - timedelta(minutes=self.correlation_window_minutes)
-
         open_incidents = Incident.objects.filter(
-            status__in=[IncidentStatus.NEW, IncidentStatus.INVESTIGATING, IncidentStatus.IDENTIFIED],
-            created_at__gte=correlation_threshold
-        ).prefetch_related('affected_services')
+            status__in=[IncidentStatus.NEW, IncidentStatus.INVESTIGATING, IncidentStatus.IDENTIFIED]
+        ).prefetch_related('affected_services').order_by('-created_at')
 
         best_incident = None
         best_correlation_score = 0
@@ -178,8 +164,7 @@ class IncidentAutoCreationService:
                 best_correlation_score = correlation_score
                 best_incident = incident
 
-        # Only correlate if we have a meaningful relationship
-        if best_correlation_score >= 0.3:  # Threshold for correlation
+        if best_correlation_score >= self.correlation_threshold:
             return best_incident
 
         return None
@@ -192,29 +177,29 @@ class IncidentAutoCreationService:
         """
         score = 0.0
 
-        # Check for direct service overlap
         event_services = [comp for comp in affected_components if isinstance(comp, TechnicalService)]
         incident_services = list(incident.affected_services.all())
 
         if event_services and incident_services:
             common_services = set(event_services) & set(incident_services)
             if common_services:
-                score += 0.8  # High correlation for direct service match
+                score += 0.8
 
-        # Check for dependency relationships
         dependency_score = self._calculate_dependency_correlation(event_services, incident_services)
         score += dependency_score * 0.6
 
-        # Check for infrastructure overlap (devices, VMs)
         infra_score = _calculate_infrastructure_correlation(affected_components, incident)
         score += infra_score * 0.4
 
-        # Time-based decay (newer events more likely to correlate)
-        time_diff = (timezone.now() - incident.created_at).total_seconds() / 60  # minutes
-        time_factor = max(0, 1 - (time_diff / self.correlation_window_minutes))
+        time_diff_minutes = (timezone.now() - incident.created_at).total_seconds() / 60
+
+        if time_diff_minutes > self.correlation_window_minutes:
+            time_factor = max(0.5, 1 - ((time_diff_minutes - self.correlation_window_minutes) / 90))
+        else:
+            time_factor = 1.0  # Žádný decay v rámci correlation window
+
         score *= time_factor
 
-        # Severity influence (similar severity events more likely to correlate)
         if hasattr(event, 'criticallity') and hasattr(incident, 'severity'):
             severity_map = {
                 EventCrit.CRITICAL: IncidentSeverity.CRITICAL,
@@ -238,7 +223,6 @@ class IncidentAutoCreationService:
 
         for event_service in event_services:
             for incident_service in incident_services:
-                # Check if services are in the same dependency chain
                 relationship_strength = self._get_dependency_relationship_strength(
                     event_service, incident_service
                 )
@@ -254,13 +238,11 @@ class IncidentAutoCreationService:
         if service1 == service2:
             return 1.0
 
-        # Check if service1 depends on service2 (or vice versa)
-        if self._is_service_dependent_on(service1, service2, max_depth=3):
+        if self._is_service_dependent_on(service1, service2, max_depth=self.max_dependency_depth):
             return 0.8
-        elif self._is_service_dependent_on(service2, service1, max_depth=3):
+        elif self._is_service_dependent_on(service2, service1, max_depth=self.max_dependency_depth):
             return 0.8
 
-        # Check for common dependencies (sibling services)
         common_deps = self._find_common_dependencies(service1, service2)
         if common_deps:
             return 0.5
@@ -300,12 +282,15 @@ class IncidentAutoCreationService:
         return service1_upstream & service2_upstream
 
     def _get_all_upstream_services(self, service: TechnicalService,
-                                   visited: Set[int] = None) -> Set[TechnicalService]:
+                                   visited: Set[int] = None, depth: int = 0) -> Set[TechnicalService]:
         """
         Get all upstream services for a given service (recursively).
         """
         if visited is None:
             visited = set()
+
+        if depth > self.max_dependency_depth:
+            return set()
 
         if service.id in visited:
             return set()
@@ -316,7 +301,7 @@ class IncidentAutoCreationService:
         for dep in service.get_upstream_dependencies():
             upstream_services.add(dep.upstream_service)
             upstream_services.update(
-                self._get_all_upstream_services(dep.upstream_service, visited)
+                self._get_all_upstream_services(dep.upstream_service, visited, depth + 1)
             )
 
         return upstream_services
@@ -325,7 +310,6 @@ class IncidentAutoCreationService:
         """
         Create a new incident for the given event and affected components.
         """
-        # Determine incident severity based on event criticality
         severity_map = {
             EventCrit.CRITICAL: IncidentSeverity.CRITICAL,
             EventCrit.WARNING: IncidentSeverity.MEDIUM,
@@ -333,13 +317,10 @@ class IncidentAutoCreationService:
         }
         severity = severity_map.get(event.criticallity, IncidentSeverity.MEDIUM)
 
-        # Find the root cause component(s) for the incident title
         root_components = _identify_root_cause_components(affected_components)
 
-        # Generate incident title
         title = _generate_incident_title(event, root_components)
 
-        # Create the incident
         incident = Incident.objects.create(
             title=title,
             description=f"Auto-generated incident from event: {event.message}",
@@ -349,10 +330,8 @@ class IncidentAutoCreationService:
             reporter="Auto-Incident System"
         )
 
-        # Add the triggering event
         incident.events.add(event)
 
-        # Add affected services
         affected_services = [comp for comp in affected_components if isinstance(comp, TechnicalService)]
         if affected_services:
             incident.affected_services.set(affected_services)
@@ -367,7 +346,6 @@ class IncidentAutoCreationService:
         # Add the event
         incident.events.add(event)
 
-        # Update incident severity if this event is more severe
         severity_priority = {
             IncidentSeverity.LOW: 1,
             IncidentSeverity.MEDIUM: 2,
@@ -387,7 +365,6 @@ class IncidentAutoCreationService:
             incident.severity = event_severity
             incident.save(update_fields=['severity'])
 
-        # Update affected services if new ones are identified
         affected_components = self._get_affected_components_from_event(event)
         new_services = [comp for comp in affected_components if isinstance(comp, TechnicalService)]
 
@@ -397,6 +374,7 @@ class IncidentAutoCreationService:
             incident.affected_services.set(all_services)
 
         logger.info(f"Added event {event.id} to incident {incident.id}")
+
 
 def process_event_for_incident(event_id: int) -> Optional[Incident]:
     """
@@ -410,6 +388,7 @@ def process_event_for_incident(event_id: int) -> Optional[Incident]:
         logger.error(f"Event {event_id} not found")
         return None
 
+
 def process_unprocessed_events():
     """
     Process all unprocessed events that haven't been assigned to incidents.
@@ -418,7 +397,7 @@ def process_unprocessed_events():
     unprocessed_events = Event.objects.filter(
         incidents__isnull=True,
         status=EventStatus.TRIGGERED,
-        created_at__gte=timezone.now() - timedelta(hours=24)  # Only process recent events
+        created_at__gte=timezone.now() - timedelta(hours=24)
     ).order_by('created_at')
 
     service = IncidentAutoCreationService()
