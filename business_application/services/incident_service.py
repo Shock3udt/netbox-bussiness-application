@@ -299,9 +299,9 @@ class IncidentAutoCreationService:
 
         try:
             for dep in service.get_upstream_dependencies():
-                upstream_services.add(dep.downstream_service)
+                upstream_services.add(dep.upstream_service)
                 upstream_services.update(
-                    self._get_all_upstream_services(dep.downstream_service, visited, depth + 1)
+                    self._get_all_upstream_services(dep.upstream_service, visited, depth + 1)
                 )
         except Exception as e:
             logger.error(f"Error getting upstream services for {service.id}: {e}")
