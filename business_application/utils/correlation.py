@@ -171,27 +171,27 @@ class AlertCorrelationEngine:
     ) -> List[TechnicalService]:
         """
         Find all services that depend on the given services.
-        Traverses the dependency graph upstream.
+        Traverses the dependency graph downstream.
         """
         dependent_services = []
         visited = set()
 
-        def traverse_upstream(service: TechnicalService):
+        def traverse_downstream(service: TechnicalService):
             if service.id in visited:
                 return
             visited.add(service.id)
 
             dependencies = ServiceDependency.objects.filter(
-                downstream_service=service
+                upstream_service=service
             )
 
             for dep in dependencies:
-                upstream_service = dep.upstream_service
-                dependent_services.append(upstream_service)
-                traverse_upstream(upstream_service)
+                downstream_service = dep.downstream_service
+                dependent_services.append(downstream_service)
+                traverse_downstream(downstream_service)
 
         for service in services:
-            traverse_upstream(service)
+            traverse_downstream(service)
 
         return dependent_services
 
