@@ -5,7 +5,7 @@ from django.utils import timezone
 import logging
 
 from .models import Event, Incident, EventStatus
-from .services.incident_service import IncidentAutoCreationService
+from .utils.correlation import AlertCorrelationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,8 @@ def auto_create_incident_from_event(sender, instance, created, **kwargs):
 
     try:
         logger.info(f"Auto-processing event {instance.id} for incident creation")
-        service = IncidentAutoCreationService()
-        incident = service.process_incoming_event(instance)
+        correlation_engine = AlertCorrelationEngine()
+        incident = correlation_engine.correlate_alert(instance)
 
         if incident:
             logger.info(f"Successfully created/updated incident {incident.id} from event {instance.id}")
