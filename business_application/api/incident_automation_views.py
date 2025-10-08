@@ -8,9 +8,7 @@ from datetime import timedelta
 import logging
 
 from business_application.models import Event, Incident, EventStatus
-from business_application.services.incident_service import (
-    IncidentAutoCreationService, process_unprocessed_events, process_event_for_incident
-)
+from business_application.utils.correlation import AlertCorrelationEngine  # <-- ZMĚNA
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +43,8 @@ class IncidentAutomationViewSet(ViewSet):
             )
 
         try:
-            service = IncidentAutoCreationService()
-            incident = service.process_incoming_event(event)
+            correlation_engine = AlertCorrelationEngine()  # <-- ZMĚNA
+            incident = correlation_engine.correlate_alert(event)  # <-- ZMĚNA
 
             if incident:
                 return Response({
@@ -97,13 +95,25 @@ class IncidentAutomationViewSet(ViewSet):
         try:
             # Get count before processing
             cutoff_time = timezone.now() - timedelta(hours=hours)
-            unprocessed_count = Event.objects.filter(
+            unprocessed_events = Event.objects.filter(
                 incidents__isnull=True,
                 status=EventStatus.TRIGGERED,
                 created_at__gte=cutoff_time
-            ).count()
+            )
 
-            processed_count = process_unprocessed_events()
+            unprocessed_count = unprocessed_events.count()
+
+            # Process events
+            correlation_engine = AlertCorrelationEngine()  # <-- ZMĚNA
+            processed_count = 0
+
+            for event in unprocessed_events:
+                try:
+                    incident = correlation_engine.correlate_alert(event)  # <-- ZMĚNA
+                    if incident:
+                        processed_count += 1
+                except Exception as e:
+                    logger.error(f"Error processing event {event.id}: {e}")
 
             return Response({
                 'success': True,
@@ -208,12 +218,12 @@ class IncidentAutomationViewSet(ViewSet):
                 event.incidents.clear()
 
             # Reprocess all events
-            service = IncidentAutoCreationService()
+            correlation_engine = AlertCorrelationEngine()  # <-- ZMĚNA
             processed_count = 0
 
             for event in events:
                 try:
-                    incident = service.process_incoming_event(event)
+                    incident = correlation_engine.correlate_alert(event)  # <-- ZMĚNA
                     if incident:
                         processed_count += 1
                 except Exception as e:
