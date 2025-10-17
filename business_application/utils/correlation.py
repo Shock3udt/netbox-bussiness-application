@@ -201,17 +201,11 @@ class AlertCorrelationEngine:
         """
         Find an existing incident that this event should be correlated with.
         """
-        # Time window for correlation
-        time_threshold = timezone.now() - timedelta(
-            minutes=self.CORRELATION_WINDOW_MINUTES
-        )
-
         for service in services:
             incidents = Incident.objects.filter(
                 affected_services=service,
-                status__in=['new', 'investigating', 'identified'],
-                created_at__gte=time_threshold
-            ).distinct()
+                status__in=['new', 'investigating', 'identified']
+            ).distinct().order_by('-created_at')
 
             for incident in incidents:
                 if self._should_correlate_with_incident(event, incident):
