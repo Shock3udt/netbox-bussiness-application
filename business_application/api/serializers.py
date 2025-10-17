@@ -5,13 +5,19 @@ from business_application.models import (
 )
 
 from django.utils import timezone
-from datetime import datetime
+from django.db import models
+from datetime import datetime, timedelta
+
 
 class BusinessApplicationSerializer(serializers.ModelSerializer):
     """
     Serializer for the BusinessApplication model.
     Provides representation for API interactions.
     """
+    # Enhanced: Add incident-related counts for automation insights
+    active_incidents_count = serializers.SerializerMethodField(read_only=True)
+    recent_events_count = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = BusinessApplication
         fields = [
@@ -22,7 +28,33 @@ class BusinessApplicationSerializer(serializers.ModelSerializer):
             'owner',
             'delegate',
             'servicenow',
+            'active_incidents_count',
+            'recent_events_count',
         ]
+
+    def get_active_incidents_count(self, obj):
+        """Count of active incidents affecting this business application."""
+        return Incident.objects.filter(
+            affected_services__business_apps=obj,
+            status__in=['new', 'investigating', 'identified']
+        ).distinct().count()
+
+    def get_recent_events_count(self, obj):
+        """Count of recent events (last 24h) affecting this business application."""
+        last_24h = timezone.now() - timedelta(hours=24)
+        from django.contrib.contenttypes.models import ContentType
+
+        # Count events from devices and VMs associated with this business app
+        device_ct = ContentType.objects.get_for_model('dcim.Device')
+        vm_ct = ContentType.objects.get_for_model('virtualization.VirtualMachine')
+
+        return Event.objects.filter(
+            created_at__gte=last_24h
+        ).filter(
+            models.Q(content_type=device_ct, object_id__in=obj.devices.values_list('id', flat=True)) |
+            models.Q(content_type=vm_ct, object_id__in=obj.virtual_machines.values_list('id', flat=True))
+        ).count()
+
 
 class TechnicalServiceSerializer(serializers.ModelSerializer):
     """
@@ -35,6 +67,12 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
     upstream_dependencies_count = serializers.SerializerMethodField(read_only=True)
     downstream_dependencies_count = serializers.SerializerMethodField(read_only=True)
     has_pagerduty_integration = serializers.ReadOnlyField()
+
+    # Enhanced: Add incident automation fields
+    health_status = serializers.CharField(read_only=True)
+    active_incidents_count = serializers.SerializerMethodField(read_only=True)
+    recent_events_count = serializers.SerializerMethodField(read_only=True)
+    blast_radius_estimate = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = TechnicalService
@@ -56,6 +94,10 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
             'pagerduty_router_rule',
             'pagerduty_config',
             'has_pagerduty_integration',
+            'health_status',
+            'active_incidents_count',
+            'recent_events_count',
+            'blast_radius_estimate',
             'created',
             'last_updated',
         ]
@@ -66,12 +108,52 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
     def get_downstream_dependencies_count(self, obj):
         return obj.get_downstream_dependencies().count()
 
+    def get_active_incidents_count(self, obj):
+        """Count of active incidents affecting this service."""
+        return obj.incidents.filter(
+            status__in=['new', 'investigating', 'identified']
+        ).count()
+
+    def get_recent_events_count(self, obj):
+        """Count of recent events (last 24h) for this service's infrastructure."""
+        last_24h = timezone.now() - timedelta(hours=24)
+        from django.contrib.contenttypes.models import ContentType
+
+        service_ct = ContentType.objects.get_for_model(TechnicalService)
+        device_ct = ContentType.objects.get_for_model('dcim.Device')
+        vm_ct = ContentType.objects.get_for_model('virtualization.VirtualMachine')
+
+        return Event.objects.filter(
+            created_at__gte=last_24h
+        ).filter(
+            models.Q(content_type=service_ct, object_id=obj.id) |
+            models.Q(content_type=device_ct, object_id__in=obj.devices.values_list('id', flat=True)) |
+            models.Q(content_type=vm_ct, object_id__in=obj.vms.values_list('id', flat=True))
+        ).count()
+
+    def get_blast_radius_estimate(self, obj):
+        """Estimate potential blast radius for incidents affecting this service."""
+        downstream_services = obj.get_downstream_dependencies().count()
+        business_apps = obj.business_apps.count()
+
+        return {
+            'downstream_services': downstream_services,
+            'business_applications': business_apps,
+            'total_devices_vms': obj.devices.count() + obj.vms.count()
+        }
+
+
 class ServiceDependencySerializer(serializers.ModelSerializer):
     """
     Serializer for the ServiceDependency model.
     """
     upstream_service_name = serializers.CharField(source='upstream_service.name', read_only=True)
     downstream_service_name = serializers.CharField(source='downstream_service.name', read_only=True)
+
+    # Enhanced: Add health status and correlation metrics
+    upstream_service_health = serializers.CharField(source='upstream_service.health_status', read_only=True)
+    downstream_service_health = serializers.CharField(source='downstream_service.health_status', read_only=True)
+    incident_correlation_strength = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = ServiceDependency
@@ -81,18 +163,55 @@ class ServiceDependencySerializer(serializers.ModelSerializer):
             'description',
             'upstream_service',
             'upstream_service_name',
+            'upstream_service_health',
             'downstream_service',
             'downstream_service_name',
+            'downstream_service_health',
             'dependency_type',
+            'incident_correlation_strength',
             'created',
             'last_updated',
         ]
+
+    def get_incident_correlation_strength(self, obj):
+        """Calculate how often incidents propagate through this dependency."""
+        last_30d = timezone.now() - timedelta(days=30)
+
+        upstream_incidents = Incident.objects.filter(
+            affected_services=obj.upstream_service,
+            created_at__gte=last_30d
+        ).count()
+
+        if upstream_incidents == 0:
+            return 0.0
+
+        # Count incidents that affected both services within correlation window
+        correlated_incidents = 0
+        for incident in Incident.objects.filter(
+                affected_services=obj.upstream_service,
+                created_at__gte=last_30d
+        ):
+            # Check if downstream service was also affected within 30 minutes
+            correlation_window = incident.created_at + timedelta(minutes=30)
+            if Incident.objects.filter(
+                    affected_services=obj.downstream_service,
+                    created_at__gte=incident.created_at,
+                    created_at__lte=correlation_window
+            ).exists():
+                correlated_incidents += 1
+
+        return (correlated_incidents / upstream_incidents) * 100
+
 
 class EventSourceSerializer(serializers.ModelSerializer):
     """
     Serializer for the EventSource model.
     """
     events_count = serializers.IntegerField(source='event_set.count', read_only=True)
+
+    # Enhanced: Add automation metrics
+    recent_events_count = serializers.SerializerMethodField(read_only=True)
+    incident_creation_rate = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = EventSource
@@ -101,9 +220,26 @@ class EventSourceSerializer(serializers.ModelSerializer):
             'name',
             'description',
             'events_count',
+            'recent_events_count',
+            'incident_creation_rate',
             'created',
             'last_updated',
         ]
+
+    def get_recent_events_count(self, obj):
+        """Count of events from this source in the last 24 hours."""
+        last_24h = timezone.now() - timedelta(hours=24)
+        return obj.event_set.filter(created_at__gte=last_24h).count()
+
+    def get_incident_creation_rate(self, obj):
+        """Percentage of events from this source that create incidents."""
+        total_events = obj.event_set.count()
+        if total_events == 0:
+            return 0.0
+
+        events_with_incidents = obj.event_set.filter(incidents__isnull=False).distinct().count()
+        return round((events_with_incidents / total_events) * 100, 2)
+
 
 class EventSerializer(serializers.ModelSerializer):
     """
@@ -113,6 +249,12 @@ class EventSerializer(serializers.ModelSerializer):
     content_type_name = serializers.CharField(source='content_type.model', read_only=True)
     has_valid_target = serializers.ReadOnlyField()
     target_display = serializers.ReadOnlyField()
+
+    # Enhanced: Add incident automation fields
+    incidents_count = serializers.IntegerField(source='incidents.count', read_only=True)
+    incident_ids = serializers.SerializerMethodField(read_only=True)
+    time_to_incident = serializers.SerializerMethodField(read_only=True)
+    correlation_score = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Event
@@ -134,9 +276,39 @@ class EventSerializer(serializers.ModelSerializer):
             'is_valid',
             'has_valid_target',
             'target_display',
+            'incidents_count',
+            'incident_ids',
+            'time_to_incident',
+            'correlation_score',
             'created',
             'last_updated',
         ]
+
+    def get_incident_ids(self, obj):
+        """List of incident IDs associated with this event."""
+        return list(obj.incidents.values_list('id', flat=True))
+
+    def get_time_to_incident(self, obj):
+        """Time in minutes from event creation to first incident assignment."""
+        first_incident = obj.incidents.order_by('created_at').first()
+        if first_incident:
+            delta = first_incident.created_at - obj.created_at
+            return int(delta.total_seconds() / 60)
+        return None
+
+    def get_correlation_score(self, obj):
+        """Basic correlation score based on incident association."""
+        if obj.incidents.exists():
+            # Higher score if event was quickly correlated
+            time_to_incident = self.get_time_to_incident(obj)
+            if time_to_incident is not None and time_to_incident <= 5:
+                return 0.9  # Very high correlation
+            elif time_to_incident is not None and time_to_incident <= 15:
+                return 0.7  # Good correlation
+            else:
+                return 0.5  # Moderate correlation
+        return 0.0
+
 
 class MaintenanceSerializer(serializers.ModelSerializer):
     """
@@ -160,6 +332,7 @@ class MaintenanceSerializer(serializers.ModelSerializer):
             'last_updated',
         ]
 
+
 class ChangeTypeSerializer(serializers.ModelSerializer):
     """
     Serializer for the ChangeType model.
@@ -176,6 +349,7 @@ class ChangeTypeSerializer(serializers.ModelSerializer):
             'created',
             'last_updated',
         ]
+
 
 class ChangeSerializer(serializers.ModelSerializer):
     """
@@ -199,6 +373,7 @@ class ChangeSerializer(serializers.ModelSerializer):
             'last_updated',
         ]
 
+
 class IncidentSerializer(serializers.ModelSerializer):
     """
     Serializer for the Incident model.
@@ -206,6 +381,14 @@ class IncidentSerializer(serializers.ModelSerializer):
     responders_count = serializers.IntegerField(source='responders.count', read_only=True)
     affected_services_count = serializers.IntegerField(source='affected_services.count', read_only=True)
     events_count = serializers.IntegerField(source='events.count', read_only=True)
+
+    # Enhanced: Add automation insights
+    affected_services = serializers.SerializerMethodField(read_only=True)
+    event_sources = serializers.SerializerMethodField(read_only=True)
+    correlation_window = serializers.SerializerMethodField(read_only=True)
+    blast_radius = serializers.SerializerMethodField(read_only=True)
+    duration_minutes = serializers.SerializerMethodField(read_only=True)
+    auto_created = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Incident
@@ -222,11 +405,78 @@ class IncidentSerializer(serializers.ModelSerializer):
             'responders_count',
             'affected_services_count',
             'events_count',
+            'affected_services',
+            'event_sources',
+            'correlation_window',
+            'blast_radius',
+            'duration_minutes',
+            'auto_created',
             'reporter',
             'commander',
             'created',
             'last_updated',
         ]
+
+    def get_affected_services(self, obj):
+        """Detailed information about affected services."""
+        return [
+            {
+                'id': service.id,
+                'name': service.name,
+                'service_type': service.service_type,
+                'health_status': getattr(service, 'health_status', 'unknown')
+            }
+            for service in obj.affected_services.all()
+        ]
+
+    def get_event_sources(self, obj):
+        """Unique event sources that contributed to this incident."""
+        sources = obj.events.filter(event_source__isnull=False).values_list(
+            'event_source__name', flat=True
+        ).distinct()
+        return list(sources)
+
+    def get_correlation_window(self, obj):
+        """Time window over which events were correlated into this incident."""
+        if obj.events.count() <= 1:
+            return 0
+
+        first_event = obj.events.order_by('created_at').first()
+        last_event = obj.events.order_by('-created_at').first()
+
+        if first_event and last_event:
+            delta = last_event.created_at - first_event.created_at
+            return int(delta.total_seconds() / 60)  # minutes
+        return 0
+
+    def get_blast_radius(self, obj):
+        """Estimated blast radius based on affected services and their dependencies."""
+        affected_services = obj.affected_services.all()
+
+        downstream_count = 0
+        business_apps_count = 0
+
+        for service in affected_services:
+            downstream_count += service.get_downstream_dependencies().count()
+            business_apps_count += service.business_apps.count()
+
+        return {
+            'affected_services': affected_services.count(),
+            'potential_downstream_services': downstream_count,
+            'affected_business_applications': business_apps_count
+        }
+
+    def get_duration_minutes(self, obj):
+        """Duration of the incident in minutes."""
+        end_time = obj.resolved_at or timezone.now()
+        start_time = obj.detected_at or obj.created_at
+
+        delta = end_time - start_time
+        return int(delta.total_seconds() / 60)
+
+    def get_auto_created(self, obj):
+        """Whether this incident was automatically created."""
+        return obj.reporter == "Auto-Incident System"
 
 
 class PagerDutyTemplateSerializer(serializers.ModelSerializer):
@@ -406,6 +656,7 @@ class EmailAlertSerializer(serializers.Serializer):
 
         return data
 
+
 class GitLabPipelineSerializer(serializers.Serializer):
     """
     Serializer for GitLab pipeline webhook payload.
@@ -460,3 +711,142 @@ class WebhookSignatureSerializer(serializers.Serializer):
             "Subclasses must implement signature validation"
         )
 
+
+# ============================================================================
+# NEW SERIALIZERS FOR INCIDENT AUTOMATION
+# ============================================================================
+
+class AutomationStatusSerializer(serializers.Serializer):
+    """Serializer for automation status information."""
+    enabled = serializers.BooleanField()
+    events_last_24h = serializers.IntegerField()
+    incidents_last_24h = serializers.IntegerField()
+    unprocessed_events = serializers.IntegerField()
+    open_incidents = serializers.IntegerField()
+    correlation_threshold = serializers.FloatField()
+    correlation_window_minutes = serializers.IntegerField()
+    recent_incident_trend = serializers.DictField()
+
+
+class CorrelationAnalysisSerializer(serializers.Serializer):
+    """Serializer for correlation analysis data."""
+    total_incidents = serializers.IntegerField()
+    incidents_by_service_count = serializers.DictField()
+    events_per_incident = serializers.DictField()
+    correlation_patterns = serializers.ListField()
+    unprocessed_events = serializers.IntegerField()
+
+
+class ProcessEventRequestSerializer(serializers.Serializer):
+    """Serializer for event processing requests."""
+    event_id = serializers.IntegerField()
+
+
+class ProcessEventResponseSerializer(serializers.Serializer):
+    """Serializer for event processing responses."""
+    success = serializers.BooleanField()
+    message = serializers.CharField()
+    incident_id = serializers.IntegerField(allow_null=True)
+    incident_title = serializers.CharField(allow_null=True)
+    action = serializers.CharField()  # 'created', 'updated', 'none'
+
+
+class ProcessUnprocessedRequestSerializer(serializers.Serializer):
+    """Serializer for batch processing requests."""
+    hours = serializers.IntegerField(default=24, min_value=1, max_value=168)
+
+
+class ProcessUnprocessedResponseSerializer(serializers.Serializer):
+    """Serializer for batch processing responses."""
+    success = serializers.BooleanField()
+    message = serializers.CharField()
+    unprocessed_events_found = serializers.IntegerField()
+    events_processed = serializers.IntegerField()
+    time_window_hours = serializers.IntegerField()
+
+
+class ForceCorrelateRequestSerializer(serializers.Serializer):
+    """Serializer for force correlation requests."""
+    hours = serializers.IntegerField(default=24, min_value=1, max_value=168)
+    incident_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        default=list
+    )
+
+
+class ForceCorrelateResponseSerializer(serializers.Serializer):
+    """Serializer for force correlation responses."""
+    success = serializers.BooleanField()
+    message = serializers.CharField()
+    total_events_reprocessed = serializers.IntegerField()
+    events_successfully_processed = serializers.IntegerField()
+    time_window_hours = serializers.IntegerField()
+
+
+class IncidentAutomationEventSerializer(serializers.ModelSerializer):
+    """
+    Simplified event serializer for automation endpoints.
+    Focuses on correlation-relevant data.
+    """
+    content_type_name = serializers.CharField(source='content_type.model', read_only=True)
+    event_source_name = serializers.CharField(source='event_source.name', read_only=True)
+    incidents_count = serializers.IntegerField(source='incidents.count', read_only=True)
+
+    class Meta:
+        model = Event
+        fields = [
+            'id',
+            'message',
+            'status',
+            'criticallity',
+            'created_at',
+            'content_type_name',
+            'object_id',
+            'event_source_name',
+            'incidents_count',
+            'dedup_id'
+        ]
+
+
+class IncidentAutomationIncidentSerializer(serializers.ModelSerializer):
+    """
+    Simplified incident serializer for automation endpoints.
+    Focuses on correlation and automation data.
+    """
+    events_count = serializers.IntegerField(source='events.count', read_only=True)
+    affected_services_count = serializers.IntegerField(source='affected_services.count', read_only=True)
+    auto_created = serializers.SerializerMethodField()
+    correlation_window = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Incident
+        fields = [
+            'id',
+            'title',
+            'status',
+            'severity',
+            'created_at',
+            'resolved_at',
+            'events_count',
+            'affected_services_count',
+            'auto_created',
+            'correlation_window',
+            'reporter'
+        ]
+
+    def get_auto_created(self, obj):
+        return obj.reporter == "Auto-Incident System"
+
+    def get_correlation_window(self, obj):
+        """Time window over which events were correlated (in minutes)."""
+        if obj.events.count() <= 1:
+            return 0
+
+        first_event = obj.events.order_by('created_at').first()
+        last_event = obj.events.order_by('-created_at').first()
+
+        if first_event and last_event:
+            delta = last_event.created_at - first_event.created_at
+            return int(delta.total_seconds() / 60)
+        return 0

@@ -171,27 +171,27 @@ class AlertCorrelationEngine:
     ) -> List[TechnicalService]:
         """
         Find all services that depend on the given services.
-        Traverses the dependency graph upstream.
+        Traverses the dependency graph downstream.
         """
         dependent_services = []
         visited = set()
 
-        def traverse_upstream(service: TechnicalService):
+        def traverse_downstream(service: TechnicalService):
             if service.id in visited:
                 return
             visited.add(service.id)
 
             dependencies = ServiceDependency.objects.filter(
-                downstream_service=service
+                upstream_service=service
             )
 
             for dep in dependencies:
-                upstream_service = dep.upstream_service
-                dependent_services.append(upstream_service)
-                traverse_upstream(upstream_service)
+                downstream_service = dep.downstream_service
+                dependent_services.append(downstream_service)
+                traverse_downstream(downstream_service)
 
         for service in services:
-            traverse_upstream(service)
+            traverse_downstream(service)
 
         return dependent_services
 
@@ -200,18 +200,26 @@ class AlertCorrelationEngine:
     ) -> Optional[Incident]:
         """
         Find an existing incident that this event should be correlated with.
+        First checks if any incident already contains an event with the same dedup_id.
         """
-        # Time window for correlation
-        time_threshold = timezone.now() - timedelta(
-            minutes=self.CORRELATION_WINDOW_MINUTES
-        )
+        # First, check if any open incident already has an event with this dedup_id
+        existing_incident_with_event = Incident.objects.filter(
+            events__dedup_id=event.dedup_id,
+            status__in=['new', 'investigating', 'identified']
+        ).first()
 
+        if existing_incident_with_event:
+            self.logger.info(
+                f"Found existing incident {existing_incident_with_event.id} with event dedup_id {event.dedup_id}"
+            )
+            return existing_incident_with_event
+
+        # If no incident has this event yet, find by affected services
         for service in services:
             incidents = Incident.objects.filter(
                 affected_services=service,
-                status__in=['new', 'investigating', 'identified'],
-                created_at__gte=time_threshold
-            ).distinct()
+                status__in=['new', 'investigating', 'identified']
+            ).distinct().order_by('-created_at')
 
             for incident in incidents:
                 if self._should_correlate_with_incident(event, incident):
