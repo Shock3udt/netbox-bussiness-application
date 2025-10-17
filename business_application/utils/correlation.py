@@ -200,7 +200,21 @@ class AlertCorrelationEngine:
     ) -> Optional[Incident]:
         """
         Find an existing incident that this event should be correlated with.
+        First checks if any incident already contains an event with the same dedup_id.
         """
+        # First, check if any open incident already has an event with this dedup_id
+        existing_incident_with_event = Incident.objects.filter(
+            events__dedup_id=event.dedup_id,
+            status__in=['new', 'investigating', 'identified']
+        ).first()
+
+        if existing_incident_with_event:
+            self.logger.info(
+                f"Found existing incident {existing_incident_with_event.id} with event dedup_id {event.dedup_id}"
+            )
+            return existing_incident_with_event
+
+        # If no incident has this event yet, find by affected services
         for service in services:
             incidents = Incident.objects.filter(
                 affected_services=service,
