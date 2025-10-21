@@ -296,7 +296,23 @@ class AlertCorrelationEngine:
         """
         # Add event to incident using the many-to-many relationship
         incident.events.add(event)
-        
+
+        try:
+            target_object = self._resolve_target(event)
+            if target_object:
+                new_services = self._find_technical_services(target_object)
+                if new_services:
+                    current_services = set(incident.affected_services.all())
+                    all_services = current_services | set(new_services)
+
+                    if len(all_services) > len(current_services):
+                        incident.affected_services.set(all_services)
+                        self.logger.info(
+                            f"Added {len(all_services) - len(current_services)} new services to incident {incident.id}"
+                        )
+        except Exception as e:
+            self.logger.error(f"Error updating services for incident {incident.id}: {e}")
+
         # Only escalate incident severity if event is more critical (never downgrade)
         event_severity_map = {'OK': 'low', 'LOW': 'low', 'MEDIUM': 'medium', 'HIGH': 'high', 'CRITICAL': 'critical'}
         severity_order = ['low', 'medium', 'high', 'critical']
@@ -351,7 +367,7 @@ class AlertCorrelationEngine:
         """
         affected_services = set()
 
-        root_services = list(incident.technical_services.all())
+        root_services = list(incident.affected_services.all())
 
         def traverse_downstream(service: TechnicalService):
             dependencies = ServiceDependency.objects.filter(
