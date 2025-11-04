@@ -197,7 +197,7 @@ class PagerDutyIncidentManager:
             )
             return None
 
-    def _build_pagerduty_payload(self, incident: Incident) -> Dict:
+    def _build_pagerduty_payload(self, incident: Incident, routing_key: str) -> Dict:
         """Build the PagerDuty Events API payload for an incident."""
 
         # Generate timestamp in ISO 8601 format with UTC
@@ -232,7 +232,7 @@ class PagerDutyIncidentManager:
         event_sources = list(set([event.event_source.name for event in related_events if event.event_source]))
 
         payload = {
-            "routing_key": self.routing_key,
+            "routing_key": routing_key,
             "event_action": "trigger",
             "dedup_key": self._generate_dedup_key(incident),
             "client": "NetBox Business Application",
