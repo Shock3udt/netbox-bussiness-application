@@ -282,7 +282,7 @@ class AlertCorrelationEngine:
         # Add event to incident using the many-to-many relationship
         incident.events.add(event)
 
-        # Create corresponding PagerDuty incident
+        # Create corresponding PagerDuty incident using closest common ancestor logic
         try:
             create_pagerduty_incident(incident)
         except Exception as e:

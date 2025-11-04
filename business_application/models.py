@@ -227,6 +227,14 @@ class TechnicalService(NetBoxModel):
         help_text='PagerDuty router rule template'
     )
 
+    # PagerDuty Routing Key
+    pagerduty_routing_key = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text='PagerDuty routing key for this service'
+    )
+
     class Meta:
         ordering = ['name']
 
@@ -409,13 +417,23 @@ class TechnicalService(NetBoxModel):
 
     @property
     def has_pagerduty_integration(self):
-        """Check if this service has complete PagerDuty integration (both templates required)"""
-        return bool(self.pagerduty_service_definition and self.pagerduty_router_rule)
+        """Check if this service has complete PagerDuty integration (all three components required)"""
+        return bool(
+            self.pagerduty_service_definition and
+            self.pagerduty_router_rule and
+            self.pagerduty_routing_key and
+            self.pagerduty_routing_key.strip()
+        )
 
     @property
     def has_partial_pagerduty_integration(self):
-        """Check if this service has partial PagerDuty integration (only one template)"""
-        return bool((self.pagerduty_service_definition or self.pagerduty_router_rule) and not self.has_pagerduty_integration)
+        """Check if this service has partial PagerDuty integration (some but not all components)"""
+        has_any_component = bool(
+            self.pagerduty_service_definition or
+            self.pagerduty_router_rule or
+            (self.pagerduty_routing_key and self.pagerduty_routing_key.strip())
+        )
+        return has_any_component and not self.has_pagerduty_integration
 
     def get_pagerduty_service_data(self):
         """Get PagerDuty service definition data in API format"""
@@ -448,6 +466,80 @@ class TechnicalService(NetBoxModel):
     def pagerduty_router_rule_name(self):
         """Get the name of the PagerDuty router rule template"""
         return self.pagerduty_router_rule.name if self.pagerduty_router_rule else None
+
+    def find_closest_ancestor_with_routing_key(self):
+        """
+        Find the closest upstream service that has a routing key.
+        Returns the service and distance, or (None, None) if none found.
+        """
+        import random
+        from collections import deque
+
+        # BFS to find services with routing keys at each distance level
+        visited = set()
+        queue = deque([(self, 0)])  # (service, distance)
+        services_by_distance = {}
+
+        while queue:
+            current_service, distance = queue.popleft()
+
+            if current_service.id in visited:
+                continue
+            visited.add(current_service.id)
+
+            # Check if this service has a routing key (but skip self at distance 0)
+            if distance > 0 and current_service.pagerduty_routing_key and current_service.pagerduty_routing_key.strip():
+                if distance not in services_by_distance:
+                    services_by_distance[distance] = []
+                services_by_distance[distance].append(current_service)
+
+            # Add upstream dependencies to queue
+            for dep in current_service.get_upstream_dependencies():
+                upstream_service = dep.upstream_service
+                if upstream_service.id not in visited:
+                    queue.append((upstream_service, distance + 1))
+
+        # Return the closest service(s) with routing key
+        if services_by_distance:
+            closest_distance = min(services_by_distance.keys())
+            closest_services = services_by_distance[closest_distance]
+
+            # TODO: Replace random selection with deterministic strategy
+            # If multiple services at same distance, pick randomly
+            chosen_service = random.choice(closest_services)
+            return chosen_service, closest_distance
+
+        return None, None
+
+    def find_all_ancestors_with_routing_keys(self):
+        """
+        HELPER/DEBUG METHOD: Find all upstream services that have routing keys, with their distances.
+        Returns list of (service, distance) tuples sorted by distance.
+
+        NOTE: This method is not used anywhere in the codebase currently. It's kept as a utility
+        for debugging routing key selection logic and potential future analysis features.
+        For actual routing key selection, use find_closest_ancestor_with_routing_key() instead.
+        """
+        visited = set()
+        result = []
+
+        def traverse_upstream(service, distance, path):
+            if service.id in visited:
+                return
+            visited.add(service.id)
+
+            # Check if this service has a routing key (but skip self at distance 0)
+            if distance > 0 and service.pagerduty_routing_key and service.pagerduty_routing_key.strip():
+                result.append((service, distance))
+
+            # Recurse to upstream dependencies
+            for dep in service.get_upstream_dependencies():
+                upstream_service = dep.upstream_service
+                if upstream_service.id not in visited:
+                    traverse_upstream(upstream_service, distance + 1, path + [upstream_service])
+
+        traverse_upstream(self, 0, [self])
+        return sorted(result, key=lambda x: x[1])  # Sort by distance
 
     def __str__(self):
         return self.name

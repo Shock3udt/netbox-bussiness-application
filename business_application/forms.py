@@ -34,7 +34,8 @@ class TechnicalServiceForm(forms.ModelForm):
             'service_type',
             'business_apps',
             'pagerduty_service_definition',
-            'pagerduty_router_rule'
+            'pagerduty_router_rule',
+            'pagerduty_routing_key'
         ]
 
     def __init__(self, *args, **kwargs):
@@ -47,6 +48,12 @@ class TechnicalServiceForm(forms.ModelForm):
         self.fields['pagerduty_router_rule'].queryset = PagerDutyTemplate.objects.filter(
             template_type=PagerDutyTemplateTypeChoices.ROUTER_RULE,
         )
+
+        if 'pagerduty_routing_key' in self.fields:
+            self.fields['pagerduty_routing_key'].widget = forms.PasswordInput(attrs={
+                'placeholder': 'Enter PagerDuty routing key'
+            })
+            self.fields['pagerduty_routing_key'].help_text = 'PagerDuty routing key for this service'
 
 class PagerDutyTemplateForm(forms.ModelForm):
     """
@@ -110,7 +117,7 @@ class TechnicalServicePagerDutyForm(forms.ModelForm):
     """
     class Meta:
         model = TechnicalService
-        fields = ['pagerduty_service_definition', 'pagerduty_router_rule']
+        fields = ['pagerduty_service_definition', 'pagerduty_router_rule', 'pagerduty_routing_key']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -122,6 +129,13 @@ class TechnicalServicePagerDutyForm(forms.ModelForm):
         self.fields['pagerduty_router_rule'].queryset = PagerDutyTemplate.objects.filter(
             template_type=PagerDutyTemplateTypeChoices.ROUTER_RULE,
         )
+
+        # Make routing key field use password input for security
+        if 'pagerduty_routing_key' in self.fields:
+            self.fields['pagerduty_routing_key'].widget = forms.PasswordInput(attrs={
+                'placeholder': 'Enter PagerDuty routing key'
+            })
+            self.fields['pagerduty_routing_key'].help_text = 'PagerDuty routing key for this service'
 
 
 class ServiceDependencyForm(forms.ModelForm):

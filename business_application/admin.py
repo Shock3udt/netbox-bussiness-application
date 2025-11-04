@@ -23,8 +23,8 @@ class TechnicalServiceAdmin(admin.ModelAdmin):
             'fields': ('business_apps', 'vms', 'devices', 'clusters')
         }),
         ('PagerDuty Integration', {
-            'fields': ('pagerduty_service_definition', 'pagerduty_router_rule'),
-            'description': 'Select PagerDuty templates to configure integration for this technical service.'
+            'fields': ('pagerduty_service_definition', 'pagerduty_router_rule', 'pagerduty_routing_key'),
+            'description': 'Complete PagerDuty integration requires all three components: service definition template, router rule template, and routing key.'
         }),
     )
 

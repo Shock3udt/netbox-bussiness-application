@@ -36,29 +36,65 @@ class PagerDutyIncidentManager:
         # Fall back to environment variable
         env_enabled = os.environ.get('PAGERDUTY_ENABLED', 'true').lower() == 'true'
 
-        # Enable if we have a routing key (either from config or env)
-        has_routing_key = bool(self.routing_key)
-
-        return plugin_enabled or env_enabled or has_routing_key
+        return plugin_enabled or env_enabled
 
     @property
     def routing_key(self) -> Optional[str]:
-        """Get the PagerDuty routing key from settings or environment variables."""
-        # Try plugin configuration first
-        plugin_key = getattr(settings, 'PLUGINS_CONFIG', {}).get(
-            'business_application', {}
-        ).get('pagerduty_events_api_key', '') or ''
+        """No default routing key - all routing keys are service-specific."""
+        return None
 
-        # Fall back to environment variables
-        env_key = os.environ.get('PAGERDUTY_ROUTING_KEY', '') or os.environ.get('PAGERDUTY_EVENTS_API_KEY', '')
+    def find_routing_key_for_incident(self, incident: Incident) -> Optional[str]:
+        """
+        Find the best routing key for an incident using closest common ancestor logic.
 
-        # Use the first non-empty key found
-        key = plugin_key or env_key
-        return key.strip() if key else None
+        For each affected service, finds the closest ancestor with a routing key.
+        Returns the routing key from the ancestor with shortest overall distance.
+        If multiple ancestors at same distance, picks randomly.
+        """
+        import random
+
+        affected_services = list(incident.affected_services.all())
+        if not affected_services:
+            self.logger.warning("No affected services found for incident")
+            return None
+
+        # Find closest ancestors with routing keys for each affected service
+        candidates = []  # List of (service_with_routing_key, distance, source_service)
+
+        for service in affected_services:
+            # First, check if the service itself has a routing key
+            if service.pagerduty_routing_key and service.pagerduty_routing_key.strip():
+                candidates.append((service, 0, service))
+                continue
+
+            # Otherwise, find closest ancestor with routing key
+            ancestor_service, distance = service.find_closest_ancestor_with_routing_key()
+            if ancestor_service and distance is not None:
+                candidates.append((ancestor_service, distance, service))
+
+        if not candidates:
+            self.logger.warning("No services with routing keys found in incident dependency chain")
+            return None
+
+        # Find the minimum distance
+        min_distance = min(candidate[1] for candidate in candidates)
+        closest_candidates = [c for c in candidates if c[1] == min_distance]
+
+        # If multiple candidates at same distance, pick randomly
+        chosen_candidate = random.choice(closest_candidates)
+        chosen_service, distance, source_service = chosen_candidate
+
+        self.logger.info(
+            f"Selected routing key from service '{chosen_service.name}' "
+            f"(distance {distance} from affected service '{source_service.name}')"
+        )
+
+        return chosen_service.pagerduty_routing_key
 
     def create_pagerduty_incident(self, netbox_incident: Incident) -> Optional[Dict]:
         """
         Create a PagerDuty incident for the given NetBox incident.
+        Uses closest common ancestor logic to find the best routing key.
 
         Args:
             netbox_incident: The NetBox incident to create in PagerDuty
@@ -70,12 +106,13 @@ class PagerDutyIncidentManager:
             self.logger.debug("PagerDuty integration is disabled")
             return None
 
-        if not self.routing_key:
-            self.logger.error("PagerDuty routing key not configured")
+        routing_key = self.find_routing_key_for_incident(netbox_incident)
+        if not routing_key:
+            self.logger.error("No suitable routing key found for incident using ancestor traversal")
             return None
 
         try:
-            payload = self._build_pagerduty_payload(netbox_incident)
+            payload = self._build_pagerduty_payload(netbox_incident, routing_key)
             response = self._send_pagerduty_request(payload)
 
             if response and 'dedup_key' in response:
@@ -104,6 +141,7 @@ class PagerDutyIncidentManager:
     def resolve_pagerduty_incident(self, netbox_incident: Incident) -> Optional[Dict]:
         """
         Resolve a PagerDuty incident when the NetBox incident is resolved.
+        Uses the same routing key selection logic as incident creation.
 
         Args:
             netbox_incident: The NetBox incident that was resolved
@@ -111,7 +149,12 @@ class PagerDutyIncidentManager:
         Returns:
             Dict containing PagerDuty response or None if resolution failed
         """
-        if not self.is_enabled or not self.routing_key:
+        if not self.is_enabled:
+            return None
+
+        routing_key = self.find_routing_key_for_incident(netbox_incident)
+        if not routing_key:
+            self.logger.warning("No suitable routing key found for incident resolution")
             return None
 
         # Check if we have the PagerDuty dedup key saved
@@ -126,7 +169,7 @@ class PagerDutyIncidentManager:
 
         try:
             payload = {
-                "routing_key": self.routing_key,
+                "routing_key": routing_key,
                 "event_action": "resolve",
                 "dedup_key": dedup_key,
                 "client": "NetBox Business Application",
