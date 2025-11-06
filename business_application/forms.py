@@ -22,6 +22,9 @@ class BusinessApplicationForm(forms.ModelForm):
             'virtual_machines',
             'devices'
         ]
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 class TechnicalServiceForm(forms.ModelForm):
     """
@@ -40,7 +43,7 @@ class TechnicalServiceForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
+        
         # Filter PagerDuty templates by type
         self.fields['pagerduty_service_definition'].queryset = PagerDutyTemplate.objects.filter(
             template_type=PagerDutyTemplateTypeChoices.SERVICE_DEFINITION,
@@ -48,11 +51,13 @@ class TechnicalServiceForm(forms.ModelForm):
         self.fields['pagerduty_router_rule'].queryset = PagerDutyTemplate.objects.filter(
             template_type=PagerDutyTemplateTypeChoices.ROUTER_RULE,
         )
-
-        self.fields['pagerduty_routing_key'].widget = forms.PasswordInput(attrs={
-            'placeholder': 'Enter PagerDuty routing key'
-        })
-        self.fields['pagerduty_routing_key'].help_text = 'PagerDuty routing key for this service'
+        
+        # Configure pagerduty_routing_key widget
+        if 'pagerduty_routing_key' in self.fields:
+            self.fields['pagerduty_routing_key'].widget = forms.PasswordInput(attrs={
+                'placeholder': 'Enter PagerDuty routing key'
+            })
+            self.fields['pagerduty_routing_key'].help_text = 'PagerDuty routing key for this service'
 
 class PagerDutyTemplateForm(forms.ModelForm):
     """
@@ -129,10 +134,12 @@ class TechnicalServicePagerDutyForm(forms.ModelForm):
             template_type=PagerDutyTemplateTypeChoices.ROUTER_RULE,
         )
 
-        self.fields['pagerduty_routing_key'].widget = forms.PasswordInput(attrs={
-            'placeholder': 'Enter PagerDuty routing key'
-        })
-        self.fields['pagerduty_routing_key'].help_text = 'PagerDuty routing key for this service'
+        # Make routing key field use password input for security
+        if 'pagerduty_routing_key' in self.fields:
+            self.fields['pagerduty_routing_key'].widget = forms.PasswordInput(attrs={
+                'placeholder': 'Enter PagerDuty routing key'
+            })
+            self.fields['pagerduty_routing_key'].help_text = 'PagerDuty routing key for this service'
 
 
 class ServiceDependencyForm(forms.ModelForm):
@@ -230,6 +237,11 @@ class IncidentForm(forms.ModelForm):
     """
     Form for creating and editing Incident objects.
     """
+    create_pagerduty_incident = forms.BooleanField(
+        required=False,
+        initial=False,
+        label='Create PagerDuty Incident',
+    )
 
     class Meta:
         model = Incident
@@ -257,3 +269,26 @@ class IncidentForm(forms.ModelForm):
             }),
         }
 
+    def save(self, commit=True):
+        """Override save to add PagerDuty integration for testing."""
+        # Check if this is a new incident (before saving)
+        is_new_incident = self.instance.pk is None
+
+        # Save the incident first
+        incident = super().save(commit=commit)
+
+        # If this is a new incident and user checked the PagerDuty checkbox
+        if commit and is_new_incident and self.cleaned_data.get('create_pagerduty_incident'):
+            from .utils.pagerduty_integration import create_pagerduty_incident
+            import logging
+
+            logger = logging.getLogger('business_application.forms')
+            try:
+                logger.info(f"Form-based PagerDuty creation requested for incident {incident.id}")
+                create_pagerduty_incident(incident)
+            except Exception as e:
+                logger.exception(f"Error creating PagerDuty incident from form: {str(e)}")
+                # Don't fail the form submission if PagerDuty fails
+                pass
+
+        return incident

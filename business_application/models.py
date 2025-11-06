@@ -214,7 +214,7 @@ class TechnicalService(NetBoxModel):
         null=True,
         blank=True,
         related_name='services_using_definition',
-        limit_choices_to={'template_type': PagerDutyTemplateTypeChoices.SERVICE_DEFINITION},
+        limit_choices_to={'template_type': 'service_definition'},
         help_text='PagerDuty service definition template'
     )
     pagerduty_router_rule = models.ForeignKey(
@@ -223,7 +223,7 @@ class TechnicalService(NetBoxModel):
         null=True,
         blank=True,
         related_name='services_using_router_rule',
-        limit_choices_to={'template_type': PagerDutyTemplateTypeChoices.ROUTER_RULE},
+        limit_choices_to={'template_type': 'router_rule'},
         help_text='PagerDuty router rule template'
     )
 
