@@ -4,7 +4,7 @@ from business_application.models import (
     Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
 )
 from dcim.models import Device
-from virtualization import VirtualMachine
+from virtualization.models import VirtualMachine
 from django.utils import timezone
 from django.db import models
 from datetime import datetime, timedelta
