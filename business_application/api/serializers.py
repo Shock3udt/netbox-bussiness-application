@@ -3,7 +3,8 @@ from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
 )
-
+from dcim.models import Device
+from virtualization import VirtualMachine
 from django.utils import timezone
 from django.db import models
 from datetime import datetime, timedelta
@@ -45,8 +46,8 @@ class BusinessApplicationSerializer(serializers.ModelSerializer):
         from django.contrib.contenttypes.models import ContentType
 
         # Count events from devices and VMs associated with this business app
-        device_ct = ContentType.objects.get_for_model('dcim.Device')
-        vm_ct = ContentType.objects.get_for_model('virtualization.VirtualMachine')
+        device_ct = ContentType.objects.get_for_model(Device)
+        vm_ct = ContentType.objects.get_for_model(VirtualMachine)
 
         return Event.objects.filter(
             created_at__gte=last_24h
@@ -120,8 +121,8 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
         from django.contrib.contenttypes.models import ContentType
 
         service_ct = ContentType.objects.get_for_model(TechnicalService)
-        device_ct = ContentType.objects.get_for_model('dcim.Device')
-        vm_ct = ContentType.objects.get_for_model('virtualization.VirtualMachine')
+        device_ct = ContentType.objects.get_for_model(Device)
+        vm_ct = ContentType.objects.get_for_model(VirtualMachine)
 
         return Event.objects.filter(
             created_at__gte=last_24h
