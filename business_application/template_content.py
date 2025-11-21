@@ -7,45 +7,63 @@ from virtualization.models import VirtualMachine
 from dcim.models import Device
 
 class AppCodeExtension(PluginTemplateExtension):
-    # Base class - should NOT have a model attribute
-    # Child classes MUST implement their own methods
-    pass
-
-class TechnicalServiceAppCodeExtension(AppCodeExtension):
-    model = 'business_application.technicalservice'
+    def left_page(self):
+        if self.context['config'].get('device_ext_page') == 'left':
+            return self.x_page()
+        return ''
 
     def right_page(self):
+        if self.context['config'].get('device_ext_page', 'right') == 'right':
+            return self.x_page()
+        return ''
+
+    def full_width_page(self):
+        if self.context['config'].get('device_ext_page') == 'full_width':
+            return self.x_page()
+        return ''
+
+    def _get_related(self, obj):
+        return BusinessApplicationTable(BusinessApplication.objects.none())
+
+    def _get_downstream(self, obj):
+        return BusinessApplicationTable(BusinessApplication.objects.none())
+
+    def x_page(self):
         obj = self.context['object']
+
+        return self.render(
+            'business_application/businessapplication/device_extend.html',
+            extra_context={
+                'related_appcodes': self._get_related(obj),
+                'downstream_appcodes': self._get_downstream(obj),
+            }
+        )
+
+class TechnicalServiceAppCodeExtension(AppCodeExtension):
+    models = ['business_application.technicalservice']
+
+    def _get_related(self, obj):
         # Get BusinessApplications related to this TechnicalService
-        related_apps = BusinessApplicationTable(
+        return BusinessApplicationTable(
             BusinessApplication.objects.filter(technical_services=obj)
         )
 
+    def _get_downstream(self, obj):
         # Get all business applications affected by services dependent on this one
         dependent_services = ServiceDependency.objects.filter(upstream_service=obj)
         apps = set()
         for dep in dependent_services:
             apps = apps.union(dep.downstream_service.business_apps.all())
-        downstream_apps = BusinessApplicationTable(apps)
-
-        return self.render(
-            'business_application/businessapplication/device_extend.html',
-            extra_context={
-                'related_appcodes': related_apps,
-                'downstream_appcodes': downstream_apps,
-            }
-        )
+        return BusinessApplicationTable(apps)
 
 class DeviceAppCodeExtension(AppCodeExtension):
-    model = 'dcim.device'
-
-    def right_page(self):
-        obj = self.context['object']
-        related_apps = BusinessApplicationTable(
+    models = ['dcim.device']
+    def _get_related(self, obj):
+        return BusinessApplicationTable(
             BusinessApplication.objects.filter(devices=obj)
         )
 
-        # Calculate downstream apps
+    def _get_downstream(self, obj):
         apps = set()
         nodes = [obj]
         current = 0
@@ -58,35 +76,17 @@ class DeviceAppCodeExtension(AppCodeExtension):
                     if termination and termination.device and termination.device not in nodes:
                         nodes.append(termination.device)
             current += 1
-        downstream_apps = BusinessApplicationTable(apps)
-
-        return self.render(
-            'business_application/businessapplication/device_extend.html',
-            extra_context={
-                'related_appcodes': related_apps,
-                'downstream_appcodes': downstream_apps,
-            }
-        )
+        return BusinessApplicationTable(apps)
 
 class VMAppCodeExtension(AppCodeExtension):
-    model = 'virtualization.virtualmachine'
-
-    def right_page(self):
-        obj = self.context['object']
-        related_apps = BusinessApplicationTable(
+    models = ['virtualization.virtualmachine']
+    def _get_related(self, obj):
+        return BusinessApplicationTable(
             BusinessApplication.objects.filter(virtual_machines=obj)
         )
 
-        return self.render(
-            'business_application/businessapplication/device_extend.html',
-            extra_context={
-                'related_appcodes': related_apps,
-                'downstream_appcodes': BusinessApplicationTable(BusinessApplication.objects.none()),
-            }
-        )
-
 class ClusterAppCodeExtension(AppCodeExtension):
-    model = 'virtualization.cluster'
+    models = ['virtualization.cluster']
 
     def right_page(self):
         obj = self.context['object']
@@ -95,6 +95,7 @@ class ClusterAppCodeExtension(AppCodeExtension):
         related_apps_via_vm = BusinessApplication.objects.filter(
             virtual_machines__in=vms_in_cluster
         ).distinct()
+
 
         return self.render(
             'business_application/businessapplication/cluster_extend.html',
