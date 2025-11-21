@@ -1,7 +1,7 @@
 from netbox.plugins import PluginTemplateExtension
 from django.db.models import Q
 
-from .models import BusinessApplication
+from .models import BusinessApplication, ServiceDependency
 from .tables import BusinessApplicationTable
 from virtualization.models import VirtualMachine
 from dcim.models import Device
@@ -38,6 +38,22 @@ class AppCodeExtension(PluginTemplateExtension):
             }
         )
 
+class TechnicalServiceAppCodeExtension(AppCodeExtension):
+    model = 'business_application.technicalservice'
+
+    def _get_related(self, obj):
+        # Get BusinessApplications related to this TechnicalService
+        return BusinessApplicationTable(
+            BusinessApplication.objects.filter(technical_services=obj)
+        )
+
+    def _get_downstream(self, obj):
+        # Get all business applications affected by services dependent on this one
+        dependent_services = ServiceDependency.objects.filter(upstream_service=obj)
+        apps = set()
+        for dep in dependent_services:
+            apps = apps.union(dep.downstream_service.business_apps.all())
+        return BusinessApplicationTable(apps)
 
 class DeviceAppCodeExtension(AppCodeExtension):
     model = 'dcim.device'
@@ -91,4 +107,5 @@ template_extensions = [
     DeviceAppCodeExtension,
     VMAppCodeExtension,
     ClusterAppCodeExtension,
+    TechnicalServiceAppCodeExtension,
 ]
