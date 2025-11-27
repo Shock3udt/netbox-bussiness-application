@@ -31,18 +31,22 @@ class AlertCorrelationEngine:
     def correlate_alert(self, event: Event) -> Optional[Incident]:
         """
         Main correlation method. Processes an event and either:
-        1. Adds it to an existing incident (ALL events if incident exists)
-        2. Creates a new incident (only for triggered, non-low/OK events)
+        1. Adds it to an existing incident (only for HIGH/CRITICAL events)
+        2. Creates a new incident (only for HIGH/CRITICAL events)
         3. Returns None if no correlation is needed
-
-        Updated behavior: ALL events on affected resources are assigned to
-        existing incidents, but only meaningful events create new incidents.
         """
         try:
             # Skip correlation for invalid events
             if not event.is_valid or not event.has_valid_target:
                 self.logger.warning(
                     f"Skipping correlation for invalid event {event.id}"
+                )
+                return None
+
+            if not self._should_try_to_correlate(event):
+                self.logger.info(
+                    f"Event {event.id} (status: {event.status}, criticality: {event.criticallity}) "
+                    f"does not require incident creation"
                 )
                 return None
 
@@ -214,7 +218,6 @@ class AlertCorrelationEngine:
             )
             return existing_incident_with_event
 
-        # If no incident has this event yet, find by affected services
         for service in services:
             incidents = Incident.objects.filter(
                 affected_services=service,
@@ -222,38 +225,29 @@ class AlertCorrelationEngine:
             ).distinct().order_by('-created_at')
 
             for incident in incidents:
-                if self._should_correlate_with_incident(event, incident):
+                if not incident.events.filter(dedup_id=event.dedup_id).exists():
                     return incident
+
 
         return None
 
-    def _should_correlate_with_incident(
-            self, event: Event, incident: Incident
+    def _should_try_to_correlate(
+            self, event: Event
     ) -> bool:
         """
         Determine if an event should be correlated with an incident.
-        Now assigns ALL events (including OK/low priority) to existing incidents.
         """
-        # Don't add duplicate events (same dedup_id)
-        if incident.events.filter(dedup_id=event.dedup_id).exists():
+
+        if event.criticallity not in ['HIGH', 'CRITICAL']:
             return False
 
-        # Assign ALL events to existing incidents, regardless of severity/status
-        # This includes OK events, low priority events, etc.
         return True
-
 
     def _should_create_incident(self, event: Event) -> bool:
         """
         Determine if an event should trigger incident creation.
-        Only creates incidents for triggered events with meaningful criticality.
         """
-        # Only triggered events can create incidents
         if event.status != 'triggered':
-            return False
-
-        # Don't create incidents for OK/resolved events or low priority events
-        if event.criticallity in ['LOW', 'OK']:
             return False
 
         return True
@@ -292,7 +286,6 @@ class AlertCorrelationEngine:
     def _add_event_to_incident(self, event: Event, incident: Incident):
         """
         Add an event to an existing incident.
-        Now handles ALL event types including OK/low priority events.
         """
         # Add event to incident using the many-to-many relationship
         incident.events.add(event)
