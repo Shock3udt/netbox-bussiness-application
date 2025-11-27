@@ -11,7 +11,6 @@ from business_application.models import (
     Event, Incident, TechnicalService, ServiceDependency,
     BusinessApplication
 )
-from .pagerduty_integration import create_pagerduty_incident
 
 logger = logging.getLogger('business_application.correlation')
 
@@ -71,19 +70,22 @@ class AlertCorrelationEngine:
             if existing_incident:
                 self._add_event_to_incident(event, existing_incident)
                 self.logger.info(
-                    f"Added event {event.id} to incident {existing_incident.id}"
+                    f"Added event {event.id} (status: {event.status}, "
+                    f"criticality: {event.criticallity}) to existing incident {existing_incident.id}"
                 )
                 return existing_incident
 
             if self._should_create_incident(event):
                 incident = self._create_incident(event, technical_services)
                 self.logger.info(
-                    f"Created new incident {incident.id} for event {event.id}"
+                    f"Created new incident {incident.id} for event {event.id} "
+                    f"(status: {event.status}, criticality: {event.criticallity})"
                 )
                 return incident
 
             self.logger.info(
-                f"Event {event.id} does not require incident creation"
+                f"Event {event.id} (status: {event.status}, criticality: {event.criticallity}) "
+                f"does not require incident creation and no existing incident found"
             )
             return None
 
@@ -234,6 +236,7 @@ class AlertCorrelationEngine:
         """
         Determine if an event should be correlated with an incident.
         """
+        # Don't add duplicate events (same dedup_id)
         if incident.events.filter(dedup_id=event.dedup_id).exists():
             return False
 
@@ -331,11 +334,17 @@ class AlertCorrelationEngine:
         severity_order = ['low', 'medium', 'high', 'critical']
         mapped_event_severity = event_severity_map.get(event.criticallity, 'medium')
 
-        if severity_order.index(mapped_event_severity) > severity_order.index(incident.severity):
-            incident.severity = mapped_event_severity
-            incident.save()
+        current_incident_severity_index = severity_order.index(incident.severity)
+        event_severity_index = severity_order.index(mapped_event_severity)
 
-        # Update incident timestamp
+        # Only escalate, never downgrade incident severity
+        if event_severity_index > current_incident_severity_index:
+            incident.severity = mapped_event_severity
+            self.logger.info(
+                f"Escalated incident {incident.id} severity from {incident.severity} to {mapped_event_severity}"
+            )
+
+        # Always update incident timestamp to show activity
         incident.updated_at = timezone.now()
         incident.save()
 
