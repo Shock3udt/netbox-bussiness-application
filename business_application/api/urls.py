@@ -1,17 +1,18 @@
-# api/urls.py - Updated with incident automation endpoints
+# api/urls.py
 
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 from business_application.api.views import (
     BusinessApplicationViewSet, TechnicalServiceViewSet, ServiceDependencyViewSet,
     EventSourceViewSet, EventViewSet, MaintenanceViewSet, ChangeTypeViewSet, ChangeViewSet,
-    IncidentViewSet, DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet, AlertIngestionViewSet, PagerDutyTemplateViewSet
+    IncidentViewSet, DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet,
+    AlertIngestionViewSet, PagerDutyTemplateViewSet
 )
 from business_application.api.incident_automation_views import IncidentAutomationViewSet
+from business_application.api.pagerduty_views import PagerDutyViewSet
 
 router = DefaultRouter()
 
-# Basic CRUD endpoints for all models
 router.register(r'business-applications', BusinessApplicationViewSet, basename='businessapplication')
 router.register(r'technical-services', TechnicalServiceViewSet, basename='technicalservice')
 router.register(r'service-dependencies', ServiceDependencyViewSet, basename='servicedependency')
@@ -23,10 +24,11 @@ router.register(r'changes', ChangeViewSet, basename='change')
 router.register(r'incidents', IncidentViewSet, basename='incident')
 router.register(r'pagerduty-templates', PagerDutyTemplateViewSet, basename='pagerdutytemplate')
 router.register(r'alerts', AlertIngestionViewSet, basename='alert-ingestion')
-
-
 router.register(r'clusters/downstream-applications', ClusterDownstreamAppsViewSet, basename='cluster-downstream-applications')
 router.register(r'incident-automation', IncidentAutomationViewSet, basename='incident-automation')
+
+# PagerDuty
+router.register(r'pagerduty', PagerDutyViewSet, basename='pagerduty')
 
 urlpatterns = router.urls + [
     path(
