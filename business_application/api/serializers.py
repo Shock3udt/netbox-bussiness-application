@@ -681,7 +681,6 @@ class GitLabSerializer(serializers.Serializer):
     # We cannot use validate_object_attributes because it does not have access to the object_kind.
     def validate(self, attrs):
         """Validate the entire payload."""
-        print(attrs)
         if attrs['object_kind'] == 'pipeline':
             required_fields = ['id', 'status', 'source']
         elif attrs['object_kind'] == 'merge_request':
