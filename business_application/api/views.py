@@ -779,14 +779,14 @@ class AlertIngestionViewSet(ViewSet):
             )
 
         # Filter out merge request pipelines
-        pipeline_source = serializer.validated_data['object_attributes'].get('source')
-        if pipeline_source == 'merge_request_event':
+        object_kind = serializer.validated_data['object_kind']
+        if object_kind == 'merge_request':
             logger.info("Detected merge request pipeline event")
             standard_payload = self._transform_gitlab_merge_request(
                 serializer.validated_data
             )
-        else:
-            logger.info(f"Processing pipeline event: {pipeline_source}")
+        elif object_kind == 'pipeline':
+            logger.info(f"Processing pipeline event: {object_kind}")
             standard_payload = self._transform_gitlab_pipeline(
                 serializer.validated_data
             )
