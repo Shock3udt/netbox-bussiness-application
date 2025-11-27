@@ -238,7 +238,6 @@ class AlertCorrelationEngine:
     def _should_create_incident(self, event: Event) -> bool:
         """
         Determine if an event should trigger incident creation.
-        Only HIGH and CRITICAL severity events create incidents.
         """
         if event.status != 'triggered':
             return False
