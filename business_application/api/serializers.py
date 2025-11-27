@@ -679,9 +679,9 @@ class GitLabSerializer(serializers.Serializer):
 
     def validate_object_attributes(self, value):
         """Validate pipeline attributes contain required fields."""
-        if self.object_kind == 'pipeline':
+        if value == 'pipeline':
             required_fields = ['id', 'status', 'source']
-        elif self.object_kind == 'merge_request':
+        elif value == 'merge_request':
             required_fields = ['id', 'status', 'source']
         else:
             raise serializers.ValidationError(
