@@ -43,7 +43,7 @@ class AlertCorrelationEngine:
                 )
                 return None
 
-            if not self._should_correlate_with_incident(event):
+            if not self._should_try_to_correlate(event):
                 self.logger.info(
                     f"Event {event.id} (status: {event.status}, criticality: {event.criticallity}) "
                     f"does not require incident creation"
@@ -218,17 +218,25 @@ class AlertCorrelationEngine:
             )
             return existing_incident_with_event
 
+        for service in services:
+            incidents = Incident.objects.filter(
+                affected_services=service,
+                status__in=['new', 'investigating', 'identified']
+            ).distinct().order_by('-created_at')
+
+            for incident in incidents:
+                if not incident.events.filter(dedup_id=event.dedup_id).exists():
+                    return incident
+
+
         return None
 
-    def _should_correlate_with_incident(
-            self, event: Event, incident: Incident
+    def _should_try_to_correlate(
+            self, event: Event
     ) -> bool:
         """
         Determine if an event should be correlated with an incident.
         """
-        # Don't add duplicate events (same dedup_id)
-        if incident.events.filter(dedup_id=event.dedup_id).exists():
-            return False
 
         if event.criticallity not in ['HIGH', 'CRITICAL']:
             return False
