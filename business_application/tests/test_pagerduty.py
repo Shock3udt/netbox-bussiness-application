@@ -481,3 +481,281 @@ class PagerDutyErrorHandlingTestCase(TestCase):
 
         with self.assertRaises(PagerDutyError):
             client.trigger(summary="Test", severity="warning")
+
+
+class IncidentAutoResolutionTestCase(TestCase):
+    """Test automatic incident resolution when all events are OK."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.event_source = EventSource.objects.create(
+            name='test-source',
+            description='Test source'
+        )
+        self.service = TechnicalService.objects.create(
+            name='test-service',
+            service_type='technical'
+        )
+
+    @override_settings(BUSINESS_APP_AUTO_RESOLVE_INCIDENTS=True)
+    def test_incident_resolved_when_all_events_ok(self):
+        """Test incident is resolved when all its events become OK."""
+        from business_application.signals import check_incident_auto_resolution
+
+        # Create incident with triggered events
+        incident = Incident.objects.create(
+            title="Test incident",
+            status=IncidentStatus.NEW,
+            severity=IncidentSeverity.HIGH,
+            description="Test"
+        )
+
+        event1 = Event.objects.create(
+            message="Event 1",
+            status=EventStatus.OK,  # Already OK
+            criticallity=EventCrit.WARNING,
+            dedup_id="auto-resolve-001",
+            last_seen_at=timezone.now(),
+            event_source=self.event_source
+        )
+        event2 = Event.objects.create(
+            message="Event 2",
+            status=EventStatus.OK,  # Already OK
+            criticallity=EventCrit.WARNING,
+            dedup_id="auto-resolve-002",
+            last_seen_at=timezone.now(),
+            event_source=self.event_source
+        )
+
+        incident.events.add(event1, event2)
+
+        # Check auto-resolution
+        check_incident_auto_resolution(incident)
+
+        # Refresh from database
+        incident.refresh_from_db()
+
+        self.assertEqual(incident.status, 'resolved')
+        self.assertIsNotNone(incident.resolved_at)
+
+    @override_settings(BUSINESS_APP_AUTO_RESOLVE_INCIDENTS=True)
+    def test_incident_not_resolved_when_triggered_events_exist(self):
+        """Test incident is NOT resolved when triggered events still exist."""
+        from business_application.signals import check_incident_auto_resolution
+
+        incident = Incident.objects.create(
+            title="Test incident",
+            status=IncidentStatus.NEW,
+            severity=IncidentSeverity.HIGH,
+            description="Test"
+        )
+
+        event1 = Event.objects.create(
+            message="Event 1",
+            status=EventStatus.OK,
+            criticallity=EventCrit.WARNING,
+            dedup_id="no-resolve-001",
+            last_seen_at=timezone.now(),
+            event_source=self.event_source
+        )
+        event2 = Event.objects.create(
+            message="Event 2",
+            status=EventStatus.TRIGGERED,  # Still triggered!
+            criticallity=EventCrit.CRITICAL,
+            dedup_id="no-resolve-002",
+            last_seen_at=timezone.now(),
+            event_source=self.event_source
+        )
+
+        incident.events.add(event1, event2)
+
+        check_incident_auto_resolution(incident)
+
+        incident.refresh_from_db()
+
+        # Should still be NEW because one event is still triggered
+        self.assertEqual(incident.status, IncidentStatus.NEW)
+        self.assertIsNone(incident.resolved_at)
+
+    @override_settings(BUSINESS_APP_AUTO_RESOLVE_INCIDENTS=False)
+    def test_incident_not_resolved_when_feature_disabled(self):
+        """Test incident is NOT resolved when auto-resolve is disabled."""
+        from business_application.signals import check_incident_auto_resolution
+
+        incident = Incident.objects.create(
+            title="Test incident",
+            status=IncidentStatus.NEW,
+            severity=IncidentSeverity.HIGH,
+            description="Test"
+        )
+
+        event = Event.objects.create(
+            message="Event",
+            status=EventStatus.OK,
+            criticallity=EventCrit.WARNING,
+            dedup_id="disabled-resolve-001",
+            last_seen_at=timezone.now(),
+            event_source=self.event_source
+        )
+
+        incident.events.add(event)
+
+        check_incident_auto_resolution(incident)
+
+        incident.refresh_from_db()
+
+        # Should still be NEW because feature is disabled
+        self.assertEqual(incident.status, IncidentStatus.NEW)
+
+    @override_settings(
+        BUSINESS_APP_AUTO_RESOLVE_INCIDENTS=True,
+        PAGERDUTY_ENABLED=True,
+        PAGERDUTY_ROUTING_KEY='test-key',
+        PAGERDUTY_AUTO_RESOLVE=True
+    )
+    @patch('business_application.signals.send_incident_to_pagerduty')
+    def test_pagerduty_resolved_on_auto_resolution(self, mock_send):
+        """Test PagerDuty is resolved when incident is auto-resolved."""
+        from business_application.signals import check_incident_auto_resolution
+
+        mock_send.return_value = {'status': 'success'}
+
+        incident = Incident.objects.create(
+            title="Test incident",
+            status=IncidentStatus.NEW,
+            severity=IncidentSeverity.HIGH,
+            description="Test"
+        )
+
+        event = Event.objects.create(
+            message="Event",
+            status=EventStatus.OK,
+            criticallity=EventCrit.WARNING,
+            dedup_id="pd-resolve-001",
+            last_seen_at=timezone.now(),
+            event_source=self.event_source
+        )
+
+        incident.events.add(event)
+
+        check_incident_auto_resolution(incident)
+
+        # Verify PagerDuty was called with resolve action
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        self.assertEqual(call_args[1]['action'], PagerDutyEventAction.RESOLVE)
+
+    @override_settings(
+        BUSINESS_APP_AUTO_RESOLVE_INCIDENTS=True,
+        PAGERDUTY_ENABLED=True,
+        PAGERDUTY_ROUTING_KEY='test-key',
+        PAGERDUTY_AUTO_RESOLVE=False  # Disabled!
+    )
+    @patch('business_application.signals.send_incident_to_pagerduty')
+    def test_pagerduty_not_resolved_when_auto_resolve_disabled(self, mock_send):
+        """Test PagerDuty is NOT resolved when PAGERDUTY_AUTO_RESOLVE is False."""
+        from business_application.signals import check_incident_auto_resolution
+
+        incident = Incident.objects.create(
+            title="Test incident",
+            status=IncidentStatus.NEW,
+            severity=IncidentSeverity.HIGH,
+            description="Test"
+        )
+
+        event = Event.objects.create(
+            message="Event",
+            status=EventStatus.OK,
+            criticallity=EventCrit.WARNING,
+            dedup_id="pd-no-resolve-001",
+            last_seen_at=timezone.now(),
+            event_source=self.event_source
+        )
+
+        incident.events.add(event)
+
+        check_incident_auto_resolution(incident)
+
+        # PagerDuty should NOT be called
+        mock_send.assert_not_called()
+
+
+class EventStatusChangeSignalTestCase(TestCase):
+    """Test event status change triggers incident resolution check."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.event_source = EventSource.objects.create(
+            name='test-source',
+            description='Test source'
+        )
+
+    @override_settings(
+        BUSINESS_APP_AUTO_RESOLVE_INCIDENTS=True,
+        BUSINESS_APP_AUTO_INCIDENTS_ENABLED=False,
+        PAGERDUTY_ENABLED=False
+    )
+    def test_changing_event_to_ok_triggers_resolution_check(self):
+        """Test changing event status to OK triggers incident resolution."""
+        # Create incident and event
+        incident = Incident.objects.create(
+            title="Test incident",
+            status=IncidentStatus.NEW,
+            severity=IncidentSeverity.HIGH,
+            description="Test"
+        )
+
+        event = Event.objects.create(
+            message="Test event",
+            status=EventStatus.TRIGGERED,
+            criticallity=EventCrit.WARNING,
+            dedup_id="status-change-001",
+            last_seen_at=timezone.now(),
+            event_source=self.event_source
+        )
+
+        incident.events.add(event)
+
+        # Change event status to OK
+        event.status = EventStatus.OK
+        event.save()
+
+        # Refresh incident
+        incident.refresh_from_db()
+
+        # Incident should be resolved
+        self.assertEqual(incident.status, 'resolved')
+
+    @override_settings(
+        BUSINESS_APP_AUTO_RESOLVE_INCIDENTS=True,
+        BUSINESS_APP_AUTO_INCIDENTS_ENABLED=False,
+        PAGERDUTY_ENABLED=False
+    )
+    def test_suppressed_status_also_triggers_resolution(self):
+        """Test changing event to SUPPRESSED also triggers resolution check."""
+        incident = Incident.objects.create(
+            title="Test incident",
+            status=IncidentStatus.NEW,
+            severity=IncidentSeverity.HIGH,
+            description="Test"
+        )
+
+        event = Event.objects.create(
+            message="Test event",
+            status=EventStatus.TRIGGERED,
+            criticallity=EventCrit.WARNING,
+            dedup_id="suppressed-001",
+            last_seen_at=timezone.now(),
+            event_source=self.event_source
+        )
+
+        incident.events.add(event)
+
+        # Change event status to SUPPRESSED
+        event.status = EventStatus.SUPPRESSED
+        event.save()
+
+        incident.refresh_from_db()
+
+        # Incident should be resolved
+        self.assertEqual(incident.status, 'resolved')

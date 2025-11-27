@@ -9,7 +9,6 @@ from business_application.api.views import (
     AlertIngestionViewSet, PagerDutyTemplateViewSet
 )
 from business_application.api.incident_automation_views import IncidentAutomationViewSet
-from business_application.api.pagerduty_views import PagerDutyViewSet
 
 router = DefaultRouter()
 
@@ -26,9 +25,6 @@ router.register(r'pagerduty-templates', PagerDutyTemplateViewSet, basename='page
 router.register(r'alerts', AlertIngestionViewSet, basename='alert-ingestion')
 router.register(r'clusters/downstream-applications', ClusterDownstreamAppsViewSet, basename='cluster-downstream-applications')
 router.register(r'incident-automation', IncidentAutomationViewSet, basename='incident-automation')
-
-# PagerDuty
-router.register(r'pagerduty', PagerDutyViewSet, basename='pagerduty')
 
 urlpatterns = router.urls + [
     path(

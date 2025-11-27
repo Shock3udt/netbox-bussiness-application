@@ -1,4 +1,4 @@
-FROM netboxcommunity/netbox:v4.2.1
+FROM netboxcommunity/netbox:v4.4.5
 COPY  .. /opt/plugins/netbox-bussiness-application/
 RUN /opt/netbox/venv/bin/pip install -e /opt/plugins/netbox-bussiness-application
 RUN echo 'PLUGINS = ["business_application"]' >> /opt/netbox/netbox/netbox/configuration.py
