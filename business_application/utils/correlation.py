@@ -280,6 +280,12 @@ class AlertCorrelationEngine:
             description=f"Incident created from alert: {event.message}"
         )
 
+        # Set technical services affected by this incident
+        incident.affected_services.set(services)
+
+        # Add event to incident using the many-to-many relationship
+        incident.events.add(event)
+
         return incident
 
     def _add_event_to_incident(self, event: Event, incident: Incident):
