@@ -658,10 +658,10 @@ class EmailAlertSerializer(serializers.Serializer):
         return data
 
 
-class GitLabPipelineSerializer(serializers.Serializer):
+class GitLabSerializer(serializers.Serializer):
     """
-    Serializer for GitLab pipeline webhook payload.
-    Based on GitLab Pipeline Events webhook format.
+    Serializer for GitLab webhook payload.
+    Based on GitLab  Events webhook format.
     """
     object_kind = serializers.CharField()
     object_attributes = serializers.DictField()
@@ -670,16 +670,23 @@ class GitLabPipelineSerializer(serializers.Serializer):
     user = serializers.DictField(required=False)
 
     def validate_object_kind(self, value):
-        """Validate that this is a pipeline event."""
-        if value != 'pipeline':
+        """Validate that this is a pipeline or merge request event."""
+        if value not in ['pipeline', 'merge_request']:
             raise serializers.ValidationError(
-                "This endpoint only accepts pipeline events"
+                "This endpoint only accepts pipeline or merge request events"
             )
         return value
 
     def validate_object_attributes(self, value):
         """Validate pipeline attributes contain required fields."""
-        required_fields = ['id', 'status', 'source']
+        if self.object_kind == 'pipeline':
+            required_fields = ['id', 'status', 'source']
+        elif self.object_kind == 'merge_request':
+            required_fields = ['id', 'status', 'source']
+        else:
+            raise serializers.ValidationError(
+                "Invalid object kind"
+            )
         for field in required_fields:
             if field not in value:
                 raise serializers.ValidationError(
