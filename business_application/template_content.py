@@ -1,7 +1,7 @@
 from netbox.plugins import PluginTemplateExtension
 from django.db.models import Q
 
-from .models import BusinessApplication
+from .models import BusinessApplication, ServiceDependency
 from .tables import BusinessApplicationTable
 from virtualization.models import VirtualMachine
 from dcim.models import Device
@@ -30,6 +30,7 @@ class AppCodeExtension(PluginTemplateExtension):
 
     def x_page(self):
         obj = self.context['object']
+
         return self.render(
             'business_application/businessapplication/device_extend.html',
             extra_context={
@@ -38,9 +39,25 @@ class AppCodeExtension(PluginTemplateExtension):
             }
         )
 
+class TechnicalServiceAppCodeExtension(AppCodeExtension):
+    models = ['business_application.technicalservice']
+
+    def _get_related(self, obj):
+        # Get BusinessApplications related to this TechnicalService
+        return BusinessApplicationTable(
+            BusinessApplication.objects.filter(technical_services=obj)
+        )
+
+    def _get_downstream(self, obj):
+        # Get all business applications affected by services dependent on this one
+        dependent_services = ServiceDependency.objects.filter(upstream_service=obj)
+        apps = set()
+        for dep in dependent_services:
+            apps = apps.union(dep.downstream_service.business_apps.all())
+        return BusinessApplicationTable(apps)
 
 class DeviceAppCodeExtension(AppCodeExtension):
-    model = 'dcim.device'
+    models = ['dcim.device']
     def _get_related(self, obj):
         return BusinessApplicationTable(
             BusinessApplication.objects.filter(devices=obj)
@@ -62,14 +79,14 @@ class DeviceAppCodeExtension(AppCodeExtension):
         return BusinessApplicationTable(apps)
 
 class VMAppCodeExtension(AppCodeExtension):
-    model = 'virtualization.virtualmachine'
+    models = ['virtualization.virtualmachine']
     def _get_related(self, obj):
         return BusinessApplicationTable(
             BusinessApplication.objects.filter(virtual_machines=obj)
         )
 
 class ClusterAppCodeExtension(AppCodeExtension):
-    model = 'virtualization.cluster'
+    models = ['virtualization.cluster']
 
     def right_page(self):
         obj = self.context['object']
@@ -91,4 +108,5 @@ template_extensions = [
     DeviceAppCodeExtension,
     VMAppCodeExtension,
     ClusterAppCodeExtension,
+    TechnicalServiceAppCodeExtension,
 ]

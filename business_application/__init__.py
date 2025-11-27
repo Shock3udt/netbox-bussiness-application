@@ -7,7 +7,7 @@ class BusinessApplicationConfig(PluginConfig):
     base_url = "business-application"  # URL base for the plugin
     required_settings = []  # Define required settings if applicable
     min_version = "4.1.0"  # Minimum required NetBox version
-    max_version = "4.3.0"  # Minimum required NetBox version
+    max_version = "4.5.0"  # Minimum required NetBox version
     default_settings = {
     }
     installed_apps = [
