@@ -1,4 +1,6 @@
 from netbox.plugins import PluginConfig
+import os
+
 class BusinessApplicationConfig(PluginConfig):
     name = "business_application"  # Must match the plugin directory name
     verbose_name = "Business Application"
@@ -9,6 +11,8 @@ class BusinessApplicationConfig(PluginConfig):
     min_version = "4.1.0"  # Minimum required NetBox version
     max_version = "4.5.0"  # Minimum required NetBox version
     default_settings = {
+        'pagerduty_events_api_key': os.environ.get('PAGERDUTY_EVENTS_API_KEY'),  # PagerDuty Events API v2 routing key for incident creation
+        'pagerduty_incident_creation_enabled': True,  # Enable/disable automatic PagerDuty incident creation
     }
     installed_apps = [
         'django_htmx',

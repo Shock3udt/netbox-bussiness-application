@@ -11,6 +11,7 @@ from business_application.models import (
     Event, Incident, TechnicalService, ServiceDependency,
     BusinessApplication
 )
+from .pagerduty_integration import create_pagerduty_incident
 
 logger = logging.getLogger('business_application.correlation')
 
@@ -281,11 +282,23 @@ class AlertCorrelationEngine:
             description=f"Incident created from alert: {event.message}"
         )
 
+        # Note: This is the single point where PagerDuty incidents are created
+        # Manual incidents created through web interface will not trigger PagerDuty integration
+
         # Set technical services affected by this incident
         incident.affected_services.set(services)
 
         # Add event to incident using the many-to-many relationship
         incident.events.add(event)
+
+        # Create corresponding PagerDuty incident
+        try:
+            create_pagerduty_incident(incident)
+        except Exception as e:
+            self.logger.exception(
+                f"Error creating PagerDuty incident for NetBox incident {incident.id}: {str(e)}"
+            )
+            # Don't fail the incident creation if PagerDuty fails
 
         return incident
 
