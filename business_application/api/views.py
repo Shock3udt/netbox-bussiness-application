@@ -790,6 +790,12 @@ class AlertIngestionViewSet(ViewSet):
             standard_payload = self._transform_gitlab_pipeline(
                 serializer.validated_data
             )
+        else:
+            logger.error(f"Invalid GitLab event: {object_kind}")
+            return Response(
+                {"errors": "Invalid GitLab event"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         return self._process_standard_alert(standard_payload)
 
