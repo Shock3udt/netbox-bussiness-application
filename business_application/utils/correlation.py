@@ -43,9 +43,10 @@ class AlertCorrelationEngine:
                 )
                 return None
 
-            if event.criticallity in ['OK', 'LOW', 'MEDIUM']:
+            if not self._should_correlate_with_incident(event):
                 self.logger.info(
-                    f"Event {event.id} has {event.criticallity} severity - not eligible for incident correlation"
+                    f"Event {event.id} (status: {event.status}, criticality: {event.criticallity}) "
+                    f"does not require incident creation"
                 )
                 return None
 
@@ -217,17 +218,6 @@ class AlertCorrelationEngine:
             )
             return existing_incident_with_event
 
-        # If no incident has this event yet, find by affected services
-        for service in services:
-            incidents = Incident.objects.filter(
-                affected_services=service,
-                status__in=['new', 'investigating', 'identified']
-            ).distinct().order_by('-created_at')
-
-            for incident in incidents:
-                if self._should_correlate_with_incident(event, incident):
-                    return incident
-
         return None
 
     def _should_correlate_with_incident(
@@ -251,8 +241,6 @@ class AlertCorrelationEngine:
         Only HIGH and CRITICAL severity events create incidents.
         """
         if event.status != 'triggered':
-            return False
-        if event.criticallity in ['OK', 'LOW', 'MEDIUM']:
             return False
 
         return True
