@@ -11,6 +11,7 @@ from business_application.models import (
     Event, Incident, TechnicalService, ServiceDependency,
     BusinessApplication
 )
+from .pagerduty_integration import create_pagerduty_incident
 
 logger = logging.getLogger('business_application.correlation')
 
@@ -171,27 +172,27 @@ class AlertCorrelationEngine:
     ) -> List[TechnicalService]:
         """
         Find all services that depend on the given services.
-        Traverses the dependency graph downstream.
+        Traverses the dependency graph upstream.
         """
         dependent_services = []
         visited = set()
 
-        def traverse_downstream(service: TechnicalService):
+        def traverse_upstream(service: TechnicalService):
             if service.id in visited:
                 return
             visited.add(service.id)
 
             dependencies = ServiceDependency.objects.filter(
-                upstream_service=service
+                downstream_service=service
             )
 
             for dep in dependencies:
-                downstream_service = dep.downstream_service
-                dependent_services.append(downstream_service)
-                traverse_downstream(downstream_service)
+                upstream_service = dep.upstream_service
+                dependent_services.append(upstream_service)
+                traverse_upstream(upstream_service)
 
         for service in services:
-            traverse_downstream(service)
+            traverse_upstream(service)
 
         return dependent_services
 
@@ -200,26 +201,18 @@ class AlertCorrelationEngine:
     ) -> Optional[Incident]:
         """
         Find an existing incident that this event should be correlated with.
-        First checks if any incident already contains an event with the same dedup_id.
         """
-        # First, check if any open incident already has an event with this dedup_id
-        existing_incident_with_event = Incident.objects.filter(
-            events__dedup_id=event.dedup_id,
-            status__in=['new', 'investigating', 'identified']
-        ).first()
+        # Time window for correlation
+        time_threshold = timezone.now() - timedelta(
+            minutes=self.CORRELATION_WINDOW_MINUTES
+        )
 
-        if existing_incident_with_event:
-            self.logger.info(
-                f"Found existing incident {existing_incident_with_event.id} with event dedup_id {event.dedup_id}"
-            )
-            return existing_incident_with_event
-
-        # If no incident has this event yet, find by affected services
         for service in services:
             incidents = Incident.objects.filter(
                 affected_services=service,
-                status__in=['new', 'investigating', 'identified']
-            ).distinct().order_by('-created_at')
+                status__in=['new', 'investigating', 'identified'],
+                created_at__gte=time_threshold
+            ).distinct()
 
             for incident in incidents:
                 if self._should_correlate_with_incident(event, incident):
@@ -281,11 +274,23 @@ class AlertCorrelationEngine:
             description=f"Incident created from alert: {event.message}"
         )
 
+        # Note: This is the single point where PagerDuty incidents are created
+        # Manual incidents created through web interface will not trigger PagerDuty integration
+
         # Set technical services affected by this incident
         incident.affected_services.set(services)
 
         # Add event to incident using the many-to-many relationship
         incident.events.add(event)
+
+        # Create corresponding PagerDuty incident
+        try:
+            create_pagerduty_incident(incident)
+        except Exception as e:
+            self.logger.exception(
+                f"Error creating PagerDuty incident for NetBox incident {incident.id}: {str(e)}"
+            )
+            # Don't fail the incident creation if PagerDuty fails
 
         return incident
 
@@ -296,23 +301,7 @@ class AlertCorrelationEngine:
         """
         # Add event to incident using the many-to-many relationship
         incident.events.add(event)
-
-        try:
-            target_object = self._resolve_target(event)
-            if target_object:
-                new_services = self._find_technical_services(target_object)
-                if new_services:
-                    current_services = set(incident.affected_services.all())
-                    all_services = current_services | set(new_services)
-
-                    if len(all_services) > len(current_services):
-                        incident.affected_services.set(all_services)
-                        self.logger.info(
-                            f"Added {len(all_services) - len(current_services)} new services to incident {incident.id}"
-                        )
-        except Exception as e:
-            self.logger.error(f"Error updating services for incident {incident.id}: {e}")
-
+        
         # Only escalate incident severity if event is more critical (never downgrade)
         event_severity_map = {'OK': 'low', 'LOW': 'low', 'MEDIUM': 'medium', 'HIGH': 'high', 'CRITICAL': 'critical'}
         severity_order = ['low', 'medium', 'high', 'critical']
@@ -367,7 +356,7 @@ class AlertCorrelationEngine:
         """
         affected_services = set()
 
-        root_services = list(incident.affected_services.all())
+        root_services = list(incident.technical_services.all())
 
         def traverse_downstream(service: TechnicalService):
             dependencies = ServiceDependency.objects.filter(

@@ -73,6 +73,21 @@
                         <td>{{ object.commander }}</td>
                     </tr>
                     {% endif %}
+                    <tr>
+                        <th scope="row">PagerDuty Integration</th>
+                        <td>
+                            {% if object.pagerduty_dedup_key %}
+                                <span class="badge bg-success">
+                                    <i class="mdi mdi-check-circle"></i> Synchronized
+                                </span>
+                                <br><small class="text-muted">Dedup Key: <code>{{ object.pagerduty_dedup_key }}</code></small>
+                            {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="mdi mdi-minus-circle"></i> Not Synchronized
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
                 </table>
             </div>
         </div>

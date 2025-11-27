@@ -36,10 +36,10 @@ class TechnicalServiceForm(forms.ModelForm):
             'pagerduty_service_definition',
             'pagerduty_router_rule'
         ]
-        
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         # Filter PagerDuty templates by type
         self.fields['pagerduty_service_definition'].queryset = PagerDutyTemplate.objects.filter(
             template_type=PagerDutyTemplateTypeChoices.SERVICE_DEFINITION,
@@ -102,7 +102,7 @@ class PagerDutyTemplateForm(forms.ModelForm):
             if not is_valid:
                 raise forms.ValidationError(f"Invalid PagerDuty configuration: {'; '.join(errors)}")
         return data
-    
+
 
 class TechnicalServicePagerDutyForm(forms.ModelForm):
     """
@@ -111,10 +111,10 @@ class TechnicalServicePagerDutyForm(forms.ModelForm):
     class Meta:
         model = TechnicalService
         fields = ['pagerduty_service_definition', 'pagerduty_router_rule']
-        
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         # Filter templates by type and active status
         self.fields['pagerduty_service_definition'].queryset = PagerDutyTemplate.objects.filter(
             template_type=PagerDutyTemplateTypeChoices.SERVICE_DEFINITION,
@@ -219,6 +219,14 @@ class IncidentForm(forms.ModelForm):
     """
     Form for creating and editing Incident objects.
     """
+    # Optional: Add checkbox for testing PagerDuty integration
+    create_pagerduty_incident = forms.BooleanField(
+        required=False,
+        initial=False,
+        label='Create PagerDuty Incident',
+        help_text='For testing: Create a corresponding incident in PagerDuty'
+    )
+
     class Meta:
         model = Incident
         fields = [
@@ -232,10 +240,40 @@ class IncidentForm(forms.ModelForm):
             'affected_services',
             'events',
             'reporter',
-            'commander'
+            'commander',
+            'pagerduty_dedup_key'
         ]
         widgets = {
             'detected_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
             'resolved_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
             'description': forms.Textarea(attrs={'rows': 4}),
+            'pagerduty_dedup_key': forms.TextInput(attrs={
+                'readonly': True,
+                'placeholder': 'Automatically populated when PagerDuty incident is created'
+            }),
         }
+
+    def save(self, commit=True):
+        """Override save to add PagerDuty integration for testing."""
+        # Check if this is a new incident (before saving)
+        is_new_incident = self.instance.pk is None
+
+        # Save the incident first
+        incident = super().save(commit=commit)
+
+        # If this is a new incident and user checked the PagerDuty checkbox
+        if commit and is_new_incident and self.cleaned_data.get('create_pagerduty_incident'):
+            # Import here to avoid circular imports
+            from .utils.pagerduty_integration import create_pagerduty_incident
+            import logging
+
+            logger = logging.getLogger('business_application.forms')
+            try:
+                logger.info(f"Form-based PagerDuty creation requested for incident {incident.id}")
+                create_pagerduty_incident(incident)
+            except Exception as e:
+                logger.exception(f"Error creating PagerDuty incident from form: {str(e)}")
+                # Don't fail the form submission if PagerDuty fails
+                pass
+
+        return incident
