@@ -7,21 +7,22 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow
 )
 from .forms import (
     BusinessApplicationForm, TechnicalServiceForm, ServiceDependencyForm, EventSourceForm, EventForm,
-    MaintenanceForm, ChangeTypeForm, ChangeForm, IncidentForm, PagerDutyTemplateForm, TechnicalServicePagerDutyForm
+    MaintenanceForm, ChangeTypeForm, ChangeForm, IncidentForm, PagerDutyTemplateForm, TechnicalServicePagerDutyForm,
+    ExternalWorkflowForm
 )
 from .tables import (
     BusinessApplicationTable, TechnicalServiceTable, ServiceDependencyTable,
     UpstreamDependencyTable, DownstreamDependencyTable, DownstreamBusinessApplicationTable,
     EventSourceTable, EventTable, MaintenanceTable, ChangeTypeTable, ChangeTable, IncidentTable,
-    PagerDutyTemplateTable
+    PagerDutyTemplateTable, ExternalWorkflowTable
 )
 from .filtersets import (
     BusinessApplicationFilter, TechnicalServiceFilter, ServiceDependencyFilter, EventSourceFilter, EventFilter,
-    MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter, PagerDutyTemplateFilter
+    MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter, PagerDutyTemplateFilter, ExternalWorkflowFilter
 )
 from django.http import JsonResponse
 from dcim.models import Device
@@ -902,6 +903,30 @@ class PagerDutyTemplateEditView(generic.ObjectEditView):
 class PagerDutyTemplateDeleteView(generic.ObjectDeleteView):
     queryset = PagerDutyTemplate.objects.all()
 
+
+# External Workflow Views
+class ExternalWorkflowListView(generic.ObjectListView):
+    queryset = ExternalWorkflow.objects.all()
+    table = ExternalWorkflowTable
+    filterset = ExternalWorkflowFilter
+
+class ExternalWorkflowDetailView(generic.ObjectView):
+    queryset = ExternalWorkflow.objects.all()
+    template_name = 'business_application/externalworkflow/externalworkflow.html'
+
+class ExternalWorkflowCreateView(generic.ObjectEditView):
+    queryset = ExternalWorkflow.objects.all()
+    form = ExternalWorkflowForm
+
+class ExternalWorkflowEditView(generic.ObjectEditView):
+    queryset = ExternalWorkflow.objects.all()
+    form = ExternalWorkflowForm
+
+class ExternalWorkflowDeleteView(generic.ObjectDeleteView):
+    queryset = ExternalWorkflow.objects.all()
+
+class ExternalWorkflowChangeLogView(generic.ObjectChangeLogView):
+    queryset = ExternalWorkflow.objects.all()
 
 
 # Calendar View

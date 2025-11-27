@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow
 )
 from dcim.models import Device
 from virtualization.models import VirtualMachine
@@ -495,6 +495,40 @@ class PagerDutyTemplateSerializer(serializers.ModelSerializer):
             'template_type',
             'pagerduty_config',
             'services_using_template',
+            'created',
+            'last_updated',
+        ]
+
+
+class ExternalWorkflowSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the ExternalWorkflow model.
+    """
+    workflow_url = serializers.ReadOnlyField()
+    workflow_identifier = serializers.ReadOnlyField()
+    workflow_type_display = serializers.CharField(source='get_workflow_type_display', read_only=True)
+    object_type_display = serializers.CharField(source='get_object_type_display', read_only=True)
+    aap_resource_type_display = serializers.CharField(source='get_aap_resource_type_display', read_only=True)
+
+    class Meta:
+        model = ExternalWorkflow
+        fields = [
+            'id',
+            'name',
+            'description',
+            'workflow_type',
+            'workflow_type_display',
+            'enabled',
+            'object_type',
+            'object_type_display',
+            'aap_url',
+            'aap_resource_type',
+            'aap_resource_type_display',
+            'aap_resource_id',
+            'n8n_webhook_url',
+            'attribute_mapping',
+            'workflow_url',
+            'workflow_identifier',
             'created',
             'last_updated',
         ]

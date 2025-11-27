@@ -10,7 +10,7 @@ from datetime import datetime, date
 
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow
 )
 from business_application.api.serializers import (
     BusinessApplicationSerializer, TechnicalServiceSerializer, ServiceDependencySerializer,
@@ -20,7 +20,8 @@ from business_application.api.serializers import (
     SignalFXAlertSerializer,
     EmailAlertSerializer,
     GitLabPipelineSerializer,
-    PagerDutyTemplateSerializer
+    PagerDutyTemplateSerializer,
+    ExternalWorkflowSerializer
 )
 from dcim.models import Device
 from virtualization.models import Cluster, VirtualMachine
@@ -530,6 +531,79 @@ class PagerDutyTemplateViewSet(ModelViewSet):
         name = self.request.query_params.get('name')
 
         return queryset.order_by('name')
+
+
+class ExternalWorkflowViewSet(ModelViewSet):
+    """
+    API endpoint for managing ExternalWorkflow objects.
+    """
+    queryset = ExternalWorkflow.objects.all()
+    serializer_class = ExternalWorkflowSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Filter external workflows by various parameters.
+        """
+        queryset = super().get_queryset()
+        name = self.request.query_params.get('name')
+        workflow_type = self.request.query_params.get('workflow_type')
+        object_type = self.request.query_params.get('object_type')
+        enabled = self.request.query_params.get('enabled')
+
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+        if workflow_type:
+            queryset = queryset.filter(workflow_type=workflow_type)
+        if object_type:
+            queryset = queryset.filter(object_type=object_type)
+        if enabled is not None:
+            queryset = queryset.filter(enabled=enabled.lower() == 'true')
+
+        return queryset.order_by('name')
+
+    @action(detail=True, methods=['post'], url_path='test')
+    def test_workflow(self, request, pk=None):
+        """
+        Test a workflow configuration with sample data.
+        """
+        try:
+            workflow = self.get_object()
+
+            # Get test object based on workflow object_type
+            test_obj = None
+            if workflow.object_type == 'device':
+                test_obj = Device.objects.first()
+            elif workflow.object_type == 'incident':
+                test_obj = Incident.objects.first()
+            elif workflow.object_type == 'event':
+                test_obj = Event.objects.first()
+
+            if not test_obj:
+                return Response({
+                    'success': False,
+                    'error': f'No {workflow.object_type} objects found to test with'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Generate mapped parameters
+            mapped_params = workflow.get_mapped_parameters(test_obj)
+
+            return Response({
+                'success': True,
+                'workflow_name': workflow.name,
+                'workflow_type': workflow.workflow_type,
+                'test_object_type': workflow.object_type,
+                'test_object': str(test_obj),
+                'mapped_parameters': mapped_params,
+                'message': 'Workflow mapping test successful. These are the parameters that would be sent.'
+            })
+
+        except Exception as e:
+            logger.exception(f'Error testing workflow: {str(e)}')
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class DeviceDownstreamAppsViewSet(ModelViewSet):

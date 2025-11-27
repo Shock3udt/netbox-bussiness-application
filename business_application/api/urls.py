@@ -5,7 +5,8 @@ from rest_framework.routers import DefaultRouter
 from business_application.api.views import (
     BusinessApplicationViewSet, TechnicalServiceViewSet, ServiceDependencyViewSet,
     EventSourceViewSet, EventViewSet, MaintenanceViewSet, ChangeTypeViewSet, ChangeViewSet,
-    IncidentViewSet, DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet, AlertIngestionViewSet, PagerDutyTemplateViewSet
+    IncidentViewSet, DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet, AlertIngestionViewSet,
+    PagerDutyTemplateViewSet, ExternalWorkflowViewSet
 )
 from business_application.api.incident_automation_views import IncidentAutomationViewSet
 
@@ -22,6 +23,7 @@ router.register(r'change-types', ChangeTypeViewSet, basename='changetype')
 router.register(r'changes', ChangeViewSet, basename='change')
 router.register(r'incidents', IncidentViewSet, basename='incident')
 router.register(r'pagerduty-templates', PagerDutyTemplateViewSet, basename='pagerdutytemplate')
+router.register(r'external-workflows', ExternalWorkflowViewSet, basename='externalworkflow')
 router.register(r'alerts', AlertIngestionViewSet, basename='alert-ingestion')
 
 
