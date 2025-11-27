@@ -1,6 +1,9 @@
-FROM netboxcommunity/netbox:v4.2.1
-COPY  .. /opt/plugins/netbox-bussiness-application/
-RUN /opt/netbox/venv/bin/pip install -e /opt/plugins/netbox-bussiness-application
+FROM netboxcommunity/netbox:v4.3.0
+
+COPY . /opt/plugins/netbox-bussiness-application/
+ENV PYTHONPATH="/opt/plugins/netbox-bussiness-application"
 RUN echo 'PLUGINS = ["business_application"]' >> /opt/netbox/netbox/netbox/configuration.py
+
 ENV DEVELOPER=true
+
 CMD ["python", "/opt/netbox/netbox/manage.py", "makemigrations", "business_application"]
