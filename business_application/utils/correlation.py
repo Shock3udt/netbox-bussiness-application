@@ -243,14 +243,7 @@ class AlertCorrelationEngine:
         if event.criticallity not in ['HIGH', 'CRITICAL']:
             return False
 
-        # Map both event and incident severities to numeric values for comparison
-        event_severity_map = {'LOW': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4}
-        incident_severity_map = {'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
-
-        event_severity = event_severity_map.get(event.criticallity, 2)
-        incident_severity = incident_severity_map.get(incident.severity, 2)
-
-        return event_severity >= incident_severity - 1
+        return True
 
     def _should_create_incident(self, event: Event) -> bool:
         """
@@ -286,23 +279,6 @@ class AlertCorrelationEngine:
             reporter='system',  # Events don't have reporter field, use system as default
             description=f"Incident created from alert: {event.message}"
         )
-
-
-
-        # Set technical services affected by this incident
-        incident.affected_services.set(services)
-
-        # Add event to incident using the many-to-many relationship
-        incident.events.add(event)
-
-        # Create corresponding PagerDuty incident using closest common ancestor logic
-        try:
-            create_pagerduty_incident(incident)
-        except Exception as e:
-            self.logger.exception(
-                f"Error creating PagerDuty incident for NetBox incident {incident.id}: {str(e)}"
-            )
-            # Don't fail the incident creation if PagerDuty fails
 
         return incident
 
