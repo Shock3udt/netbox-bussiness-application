@@ -667,6 +667,14 @@ class Incident(NetBoxModel):
         blank=True,
         help_text='Technical services affected by this incident'
     )
+    
+    # Affected devices
+    affected_devices = models.ManyToManyField(
+        Device,
+        related_name='incidents',
+        blank=True,
+        help_text='Devices affected by this incident'
+    )
 
     # Related events
     events          = models.ManyToManyField(

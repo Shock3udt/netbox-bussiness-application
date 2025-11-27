@@ -294,9 +294,10 @@ class IncidentTable(NetBoxTable):
     resolved_at = tables.DateTimeColumn()
     responders_count = tables.Column(verbose_name="Responders", accessor="responders.count")
     affected_services_count = tables.Column(verbose_name="Affected Services", accessor="affected_services.count")
+    affected_devices_count = tables.Column(verbose_name="Affected Devices", accessor="affected_devices.count")
     events_count = tables.Column(verbose_name="Events", accessor="events.count")
     commander = tables.Column()
 
     class Meta(NetBoxTable.Meta):
         model = Incident
-        fields = ['pk', 'title', 'status', 'severity', 'created_at', 'resolved_at', 'responders_count', 'affected_services_count', 'events_count', 'commander']
+        fields = ['pk', 'title', 'status', 'severity', 'created_at', 'resolved_at', 'responders_count', 'affected_services_count', 'affected_devices_count', 'events_count', 'commander']

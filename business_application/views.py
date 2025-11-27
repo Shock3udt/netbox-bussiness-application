@@ -398,6 +398,21 @@ class IncidentTimelineView(generic.ObjectView):
                 'icon': 'mdi-server-network',
                 'services': list(affected_services)
             })
+            
+        # Add affected devices information
+        affected_devices = obj.affected_devices.all()
+        if affected_devices:
+            timeline_entries.append({
+                'timestamp': obj.created_at,
+                'type': 'devices_affected',
+                'title': 'Affected Devices',
+                'description': f'{affected_devices.count()} device(s) affected by this incident',
+                'severity': obj.severity,
+                'status': obj.status,
+                'object': obj,
+                'icon': 'mdi-server-network',
+                'devices': list(affected_devices)
+            })
 
         # Add responders if any
         responders = obj.responders.all()

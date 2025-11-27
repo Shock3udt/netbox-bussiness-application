@@ -111,4 +111,4 @@ class IncidentAdmin(admin.ModelAdmin):
     list_filter = ('status', 'severity', 'created_at', 'resolved_at')
     readonly_fields = ('created_at', 'updated_at')
     date_hierarchy = 'created_at'
-    filter_horizontal = ('responders', 'affected_services', 'events')
+    filter_horizontal = ('responders', 'affected_services', 'affected_devices', 'events')

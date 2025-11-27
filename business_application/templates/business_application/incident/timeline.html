@@ -121,6 +121,22 @@
                                     </div>
                                     {% endif %}
 
+                                    {% if entry.type == 'devices_affected' and entry.devices %}
+                                    <div class="mt-3">
+                                        <strong>Affected Devices:</strong>
+                                        <ul class="list-unstyled mt-2">
+                                            {% for device in entry.devices %}
+                                            <li class="mb-1">
+                                                <a href="{{ device.get_absolute_url }}" class="text-decoration-none">
+                                                    <i class="mdi mdi-server"></i> {{ device.name }}
+                                                </a>
+                                                <small class="text-muted ms-2">({{ device.device_type|title }})</small>
+                                            </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                    {% endif %}
+
                                     {% if entry.type == 'responders_assigned' and entry.responders %}
                                     <div class="mt-3">
                                         <strong>Responders:</strong>

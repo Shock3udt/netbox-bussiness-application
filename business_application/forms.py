@@ -230,6 +230,7 @@ class IncidentForm(forms.ModelForm):
             'resolved_at',
             'responders',
             'affected_services',
+            'affected_devices',
             'events',
             'reporter',
             'commander'
