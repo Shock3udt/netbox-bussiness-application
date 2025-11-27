@@ -676,23 +676,26 @@ class GitLabSerializer(serializers.Serializer):
                 "This endpoint only accepts pipeline or merge request events"
             )
         return value
-
-    def validate_object_attributes(self, value):
-        """Validate pipeline attributes contain required fields."""
-        if value == 'pipeline':
+    
+    # Validate the entire payload, as object_attributes can be different for pipeline and merge request events.
+    # We cannot use validate_object_attributes because it does not have access to the object_kind.
+    def validate(self, attrs):
+        """Validate the entire payload."""
+        print(attrs)
+        if attrs['object_kind'] == 'pipeline':
             required_fields = ['id', 'status', 'source']
-        elif value == 'merge_request':
-            required_fields = ['id', 'status', 'source']
+        elif attrs['object_kind'] == 'merge_request':
+            required_fields = ['id', 'state', 'source']
         else:
             raise serializers.ValidationError(
-                "Invalid object kind"
+                "Invalid object kind: " + attrs['object_kind']
             )
         for field in required_fields:
-            if field not in value:
+            if field not in attrs['object_attributes']:
                 raise serializers.ValidationError(
                     f"Missing required field in object_attributes: {field}"
                 )
-        return value
+        return attrs
 
     def validate_project(self, value):
         """Validate project contains required fields."""
