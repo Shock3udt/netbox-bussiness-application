@@ -1,23 +1,10 @@
 # business_application/utils/pagerduty_integration.py
-"""
-PagerDuty integration module for NetBox Business Application plugin.
-
-Handles:
-- Creating PagerDuty incidents from NetBox incidents
-- Resolving PagerDuty incidents when NetBox incidents are resolved
-- Acknowledging PagerDuty incidents when NetBox incidents are being investigated
-
-Routing Key Priority:
-1. First affected TechnicalService with pagerduty_routing_key
-2. First affected BusinessApplication with pagerduty_routing_key
-3. Global fallback from plugin settings (pagerduty_events_api_key)
-"""
 
 import requests
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Set
 from django.conf import settings
 
 logger = logging.getLogger('business_application.pagerduty')
@@ -31,7 +18,7 @@ class PagerDutyIncidentManager:
     Handles PagerDuty incident creation and management for NetBox incidents.
     Uses the PagerDuty Events API v2 to create incidents via event orchestration.
 
-    Supports per-service and per-application routing keys.
+    Supports hierarchical per-service routing keys with upstream inheritance.
     """
 
     def __init__(self):
@@ -45,16 +32,90 @@ class PagerDutyIncidentManager:
             'business_application', {}
         ).get('pagerduty_incident_creation_enabled', False)
 
+    def _get_service_depth(self, service, visited: Set[int] = None) -> int:
+        """
+        Calculate the depth of a service in the dependency hierarchy.
+        Root services (no upstream dependencies) have depth 0.
+        Services with upstream dependencies have depth = max(parent depths) + 1
+        """
+        if visited is None:
+            visited = set()
+
+        if service.id in visited:
+            return 0  # Circular dependency protection
+        visited.add(service.id)
+
+        upstream_deps = service.upstream_dependencies.all()
+        if not upstream_deps.exists():
+            return 0  # Root service
+
+        max_parent_depth = 0
+        for dep in upstream_deps:
+            parent_depth = self._get_service_depth(dep.upstream_service, visited.copy())
+            max_parent_depth = max(max_parent_depth, parent_depth)
+
+        return max_parent_depth + 1
+
+    def _sort_services_by_hierarchy(self, services) -> List:
+        """
+        Sort services so that root/parent services come first.
+        Services with lower depth (closer to root) come before those with higher depth.
+        """
+        services_with_depth = []
+        for service in services:
+            depth = self._get_service_depth(service)
+            services_with_depth.append((depth, service))
+
+        # Sort by depth (ascending - roots first)
+        services_with_depth.sort(key=lambda x: x[0])
+
+        return [service for depth, service in services_with_depth]
+
+    def _find_routing_key_upstream(self, service, visited: Set[int] = None) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Recursively search upstream (toward parents/roots) for a routing key.
+
+        Args:
+            service: TechnicalService to start searching from
+            visited: Set of already visited service IDs (for circular dependency protection)
+
+        Returns:
+            Tuple of (routing_key, source_service_name) or (None, None)
+        """
+        if visited is None:
+            visited = set()
+
+        if service.id in visited:
+            return None, None  # Circular dependency protection
+        visited.add(service.id)
+
+        # Check if this service has a routing key
+        routing_key = getattr(service, 'pagerduty_routing_key', None)
+        if routing_key:
+            self.logger.debug(
+                f"Found routing key on TechnicalService '{service.name}'"
+            )
+            return routing_key, f"TechnicalService: {service.name}"
+
+        # Get upstream (parent) services and check them
+        # upstream_dependencies gives us ServiceDependency objects where this service is downstream
+        for dependency in service.upstream_dependencies.all():
+            upstream_service = dependency.upstream_service
+            routing_key, source = self._find_routing_key_upstream(upstream_service, visited.copy())
+            if routing_key:
+                return routing_key, source
+
+        return None, None
+
     def get_routing_key_for_incident(self, incident) -> Tuple[Optional[str], Optional[str]]:
         """
         Determine the appropriate routing key for an incident.
 
-        Priority:
-        1. First affected TechnicalService with pagerduty_routing_key
-        2. First affected BusinessApplication with pagerduty_routing_key
-
-        Note: There is no global fallback. Routing key must be configured
-        on TechnicalService or BusinessApplication.
+        Algorithm:
+        1. Get affected TechnicalServices
+        2. Sort by hierarchy (root services first)
+        3. For each service, search upstream for routing key
+        4. If no service has routing key, check BusinessApplications
 
         Args:
             incident: The NetBox Incident object
@@ -63,26 +124,44 @@ class PagerDutyIncidentManager:
             Tuple of (routing_key, source_description)
             source_description indicates where the key came from
         """
-        # Priority 1: Check TechnicalServices
-        for service in incident.affected_services.all():
-            routing_key = getattr(service, 'pagerduty_routing_key', None)
+        affected_services = list(incident.affected_services.all())
+
+        if not affected_services:
+            self.logger.debug(f"Incident {incident.id} has no affected services")
+            return None, None
+
+        # Sort services by hierarchy (roots first)
+        sorted_services = self._sort_services_by_hierarchy(affected_services)
+
+        self.logger.debug(
+            f"Searching for routing key in {len(sorted_services)} services "
+            f"(sorted by hierarchy): {[s.name for s in sorted_services]}"
+        )
+
+        # Search each service and its upstream hierarchy for routing key
+        for service in sorted_services:
+            routing_key, source = self._find_routing_key_upstream(service)
             if routing_key:
                 self.logger.debug(
-                    f"Using routing key from TechnicalService '{service.name}' for incident {incident.id}"
+                    f"Found routing key for incident {incident.id} from: {source}"
                 )
-                return routing_key, f"TechnicalService: {service.name}"
+                return routing_key, source
 
-        # Priority 2: Check BusinessApplications (via affected services)
-        for service in incident.affected_services.all():
+        # Fallback: Check BusinessApplications
+        self.logger.debug(
+            f"No routing key found in service hierarchy, checking BusinessApplications"
+        )
+
+        for service in sorted_services:
             for app in service.business_apps.all():
                 routing_key = getattr(app, 'pagerduty_routing_key', None)
                 if routing_key:
                     self.logger.debug(
-                        f"Using routing key from BusinessApplication '{app.name}' for incident {incident.id}"
+                        f"Found routing key on BusinessApplication '{app.name}'"
                     )
                     return routing_key, f"BusinessApplication: {app.name}"
 
-        # No routing key found
+        self.logger.debug(f"No routing key found for incident {incident.id}")
         return None, None
 
     def create_pagerduty_incident(self, netbox_incident) -> Optional[Dict]:
@@ -104,7 +183,7 @@ class PagerDutyIncidentManager:
         if not routing_key:
             self.logger.warning(
                 f"No PagerDuty routing key found for incident {netbox_incident.id}. "
-                f"Configure routing key on TechnicalService, BusinessApplication, or in plugin settings."
+                f"Configure routing key on a root TechnicalService or BusinessApplication."
             )
             return None
 
@@ -114,7 +193,7 @@ class PagerDutyIncidentManager:
                 f"using routing key from: {routing_source}"
             )
 
-            payload = self._build_pagerduty_payload(netbox_incident, routing_key)
+            payload = self._build_pagerduty_payload(netbox_incident, routing_key, routing_source)
             response = self._send_pagerduty_request(payload)
 
             if response and 'dedup_key' in response:
@@ -154,7 +233,6 @@ class PagerDutyIncidentManager:
             self.logger.debug("PagerDuty integration is disabled")
             return None
 
-        # Check if we have the PagerDuty dedup key saved
         if not netbox_incident.pagerduty_dedup_key:
             self.logger.warning(
                 f"No PagerDuty dedup key found for NetBox incident {netbox_incident.id}. "
@@ -217,7 +295,6 @@ class PagerDutyIncidentManager:
             self.logger.debug("PagerDuty integration is disabled")
             return None
 
-        # Check if we have the PagerDuty dedup key saved
         if not netbox_incident.pagerduty_dedup_key:
             self.logger.warning(
                 f"No PagerDuty dedup key found for NetBox incident {netbox_incident.id}. "
@@ -266,13 +343,11 @@ class PagerDutyIncidentManager:
             )
             return None
 
-    def _build_pagerduty_payload(self, incident, routing_key: str) -> Dict:
+    def _build_pagerduty_payload(self, incident, routing_key: str, routing_source: str) -> Dict:
         """Build the PagerDuty Events API payload for an incident."""
 
-        # Generate timestamp in ISO 8601 format with UTC
         timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
-        # Map NetBox severity to PagerDuty severity
         severity_map = {
             'critical': 'critical',
             'high': 'error',
@@ -280,24 +355,24 @@ class PagerDutyIncidentManager:
             'low': 'info'
         }
 
-        # Get affected services information
         affected_services = list(incident.affected_services.all())
         service_names = [service.name for service in affected_services]
 
-        # Build service details for custom details
+        # Build service details including routing key info
         service_details = []
         for service in affected_services:
+            svc_routing_key, svc_routing_source = self._find_routing_key_upstream(service)
             service_info = {
                 "name": service.name,
                 "type": service.service_type,
                 "has_pagerduty_integration": service.has_pagerduty_integration,
-                "has_routing_key": bool(getattr(service, 'pagerduty_routing_key', None)),
+                "has_own_routing_key": bool(getattr(service, 'pagerduty_routing_key', None)),
+                "effective_routing_source": svc_routing_source,
             }
             if service.pagerduty_service_definition:
                 service_info["pagerduty_template"] = service.pagerduty_service_definition.name
             service_details.append(service_info)
 
-        # Get related events information
         related_events = list(incident.events.all())
         event_sources = list(set([
             event.event_source.name
@@ -305,7 +380,6 @@ class PagerDutyIncidentManager:
             if event.event_source
         ]))
 
-        # Get business applications
         business_apps = set()
         for service in affected_services:
             for app in service.business_apps.all():
@@ -336,6 +410,7 @@ class PagerDutyIncidentManager:
                     "Created At": incident.created_at.isoformat() if incident.created_at else None,
                     "Detected At": incident.detected_at.isoformat() if incident.detected_at else None,
                     "NetBox Incident URL": self._get_netbox_incident_url(incident),
+                    "Routing Key Source": routing_source,
                     "Affected Services": service_names,
                     "Service Count": len(affected_services),
                     "Service Details": service_details,
@@ -370,11 +445,9 @@ class PagerDutyIncidentManager:
             base_url = base_url.rstrip('/')
 
         try:
-            # Use the incident's get_absolute_url method
             relative_url = incident.get_absolute_url()
             return f"{base_url}{relative_url}"
         except Exception:
-            # Fallback to manual construction
             return f"{base_url}/plugins/business-application/incidents/{incident.id}/"
 
     def _send_pagerduty_request(self, payload: Dict) -> Optional[Dict]:
@@ -388,10 +461,10 @@ class PagerDutyIncidentManager:
                 self.api_url,
                 data=json.dumps(payload),
                 headers=headers,
-                timeout=30  # 30 second timeout
+                timeout=30
             )
 
-            response.raise_for_status()  # Raise an exception for bad status codes
+            response.raise_for_status()
 
             response_data = response.json()
             self.logger.debug(f"PagerDuty response: {json.dumps(response_data, indent=2)}")
@@ -409,45 +482,21 @@ class PagerDutyIncidentManager:
             return None
 
 
-# Convenience functions for easy importing
+# Convenience functions
 def create_pagerduty_incident(netbox_incident) -> Optional[Dict]:
-    """
-    Convenience function to create a PagerDuty incident.
-
-    Args:
-        netbox_incident: The NetBox incident to create in PagerDuty
-
-    Returns:
-        Dict containing PagerDuty response or None if creation failed
-    """
+    """Create a PagerDuty incident."""
     manager = PagerDutyIncidentManager()
     return manager.create_pagerduty_incident(netbox_incident)
 
 
 def resolve_pagerduty_incident(netbox_incident) -> Optional[Dict]:
-    """
-    Convenience function to resolve a PagerDuty incident.
-
-    Args:
-        netbox_incident: The NetBox incident that was resolved
-
-    Returns:
-        Dict containing PagerDuty response or None if resolution failed
-    """
+    """Resolve a PagerDuty incident."""
     manager = PagerDutyIncidentManager()
     return manager.resolve_pagerduty_incident(netbox_incident)
 
 
 def acknowledge_pagerduty_incident(netbox_incident) -> Optional[Dict]:
-    """
-    Convenience function to acknowledge a PagerDuty incident.
-
-    Args:
-        netbox_incident: The NetBox incident that is being acknowledged
-
-    Returns:
-        Dict containing PagerDuty response or None if acknowledgment failed
-    """
+    """Acknowledge a PagerDuty incident."""
     manager = PagerDutyIncidentManager()
     return manager.acknowledge_pagerduty_incident(netbox_incident)
 
@@ -456,15 +505,24 @@ def get_routing_key_info(netbox_incident) -> Dict:
     """
     Get information about which routing key would be used for an incident.
     Useful for debugging and UI display.
-
-    Args:
-        netbox_incident: The NetBox incident to check
-
-    Returns:
-        Dict with routing key information
     """
     manager = PagerDutyIncidentManager()
     routing_key, source = manager.get_routing_key_for_incident(netbox_incident)
+
+    # Get hierarchy info
+    affected_services = list(netbox_incident.affected_services.all())
+    sorted_services = manager._sort_services_by_hierarchy(affected_services)
+
+    hierarchy_info = []
+    for service in sorted_services:
+        depth = manager._get_service_depth(service)
+        svc_key, svc_source = manager._find_routing_key_upstream(service)
+        hierarchy_info.append({
+            'service_name': service.name,
+            'depth': depth,
+            'has_own_key': bool(getattr(service, 'pagerduty_routing_key', None)),
+            'effective_routing_source': svc_source,
+        })
 
     return {
         'has_routing_key': bool(routing_key),
@@ -472,4 +530,5 @@ def get_routing_key_info(netbox_incident) -> Dict:
             routing_key) > 12 else None,
         'routing_source': source,
         'is_enabled': manager.is_enabled,
+        'service_hierarchy': hierarchy_info,
     }
