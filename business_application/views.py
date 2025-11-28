@@ -337,6 +337,12 @@ class IncidentChangeLogView(generic.ObjectChangeLogView):
 class IncidentDetailView(generic.ObjectView):
     queryset = Incident.objects.all()
     template_name = 'business_application/incident/incident.html'
+    
+    def get_extra_context(self, request, instance):
+        """Add context events to the template context"""
+        context = super().get_extra_context(request, instance)
+        context['context_events'] = instance.get_recent_context_events(limit=20)
+        return context
 
 class IncidentCreateView(generic.ObjectEditView):
     queryset = Incident.objects.all()
