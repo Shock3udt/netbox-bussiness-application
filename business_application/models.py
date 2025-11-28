@@ -902,3 +902,121 @@ class ExternalWorkflow(NetBoxModel):
 
     def __str__(self):
         return f"{self.name} ({self.get_workflow_type_display()})"
+
+
+class WorkflowExecutionStatus(ChoiceSet):
+    """Status choices for workflow executions"""
+    PENDING = 'pending'
+    RUNNING = 'running'
+    SUCCESS = 'success'
+    FAILED = 'failed'
+    CANCELLED = 'cancelled'
+
+    CHOICES = [
+        (PENDING, 'Pending', 'gray'),
+        (RUNNING, 'Running', 'blue'),
+        (SUCCESS, 'Success', 'green'),
+        (FAILED, 'Failed', 'red'),
+        (CANCELLED, 'Cancelled', 'orange'),
+    ]
+
+
+class WorkflowExecution(NetBoxModel):
+    """
+    A model representing the execution log of an external workflow.
+    Records who executed what workflow, when, and the result.
+    """
+    workflow = models.ForeignKey(
+        ExternalWorkflow,
+        on_delete=models.CASCADE,
+        related_name='executions',
+        help_text='The workflow that was executed'
+    )
+    
+    # Who triggered the execution
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='workflow_executions',
+        help_text='User who triggered the execution'
+    )
+    
+    # What object triggered it (polymorphic)
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        help_text='Type of the source object'
+    )
+    object_id = models.PositiveIntegerField(
+        help_text='ID of the source object'
+    )
+    source_object = GenericForeignKey('content_type', 'object_id')
+    
+    # Execution details
+    status = models.CharField(
+        max_length=20,
+        choices=WorkflowExecutionStatus,
+        default=WorkflowExecutionStatus.PENDING,
+        help_text='Current status of the execution'
+    )
+    
+    # Timestamps
+    started_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When the execution was started'
+    )
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the execution completed'
+    )
+    
+    # Request/Response data
+    parameters_sent = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Parameters sent to the workflow'
+    )
+    execution_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text='External execution ID (AAP job ID, etc.)'
+    )
+    response_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Response received from the workflow platform'
+    )
+    error_message = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Error message if execution failed'
+    )
+
+    class Meta:
+        ordering = ['-started_at']
+        verbose_name = 'Workflow Execution'
+        verbose_name_plural = 'Workflow Executions'
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:workflowexecution_detail', args=[self.pk])
+
+    @property
+    def duration(self):
+        """Calculate execution duration in seconds"""
+        if self.completed_at and self.started_at:
+            return (self.completed_at - self.started_at).total_seconds()
+        return None
+
+    @property
+    def source_object_display(self):
+        """Get display string for the source object"""
+        if self.source_object:
+            return str(self.source_object)
+        return f"{self.content_type.model} (ID: {self.object_id})"
+
+    def __str__(self):
+        return f"{self.workflow.name} - {self.started_at.strftime('%Y-%m-%d %H:%M:%S')} ({self.status})"

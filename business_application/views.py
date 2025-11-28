@@ -7,7 +7,8 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow,
+    WorkflowExecution
 )
 from .forms import (
     BusinessApplicationForm, TechnicalServiceForm, ServiceDependencyForm, EventSourceForm, EventForm,
@@ -873,6 +874,7 @@ class DeviceAutomationView(generic.ObjectView):
     )
 
     def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
         obj = self.get_object(pk=pk)
 
         # Get all enabled workflows for device object type
@@ -890,6 +892,13 @@ class DeviceAutomationView(generic.ObjectView):
                 'mapped_params': mapped_params,
             })
 
+        # Get execution history for this object
+        device_ct = ContentType.objects.get_for_model(Device)
+        execution_history = WorkflowExecution.objects.filter(
+            content_type=device_ct,
+            object_id=obj.pk
+        ).select_related('workflow', 'user').order_by('-started_at')[:20]
+
         return render(
             request,
             self.template_name,
@@ -899,6 +908,7 @@ class DeviceAutomationView(generic.ObjectView):
                 'object_type': 'device',
                 'workflows': workflows_with_params,
                 'workflows_count': workflows.count(),
+                'execution_history': execution_history,
             }
         )
 
@@ -917,6 +927,7 @@ class IncidentAutomationView(generic.ObjectView):
     )
 
     def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
         obj = self.get_object(pk=pk)
 
         # Get all enabled workflows for incident object type
@@ -934,6 +945,13 @@ class IncidentAutomationView(generic.ObjectView):
                 'mapped_params': mapped_params,
             })
 
+        # Get execution history for this object
+        incident_ct = ContentType.objects.get_for_model(Incident)
+        execution_history = WorkflowExecution.objects.filter(
+            content_type=incident_ct,
+            object_id=obj.pk
+        ).select_related('workflow', 'user').order_by('-started_at')[:20]
+
         return render(
             request,
             self.template_name,
@@ -943,6 +961,7 @@ class IncidentAutomationView(generic.ObjectView):
                 'object_type': 'incident',
                 'workflows': workflows_with_params,
                 'workflows_count': workflows.count(),
+                'execution_history': execution_history,
             }
         )
 
@@ -961,6 +980,7 @@ class EventAutomationView(generic.ObjectView):
     )
 
     def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
         obj = self.get_object(pk=pk)
 
         # Get all enabled workflows for event object type
@@ -978,6 +998,13 @@ class EventAutomationView(generic.ObjectView):
                 'mapped_params': mapped_params,
             })
 
+        # Get execution history for this object
+        event_ct = ContentType.objects.get_for_model(Event)
+        execution_history = WorkflowExecution.objects.filter(
+            content_type=event_ct,
+            object_id=obj.pk
+        ).select_related('workflow', 'user').order_by('-started_at')[:20]
+
         return render(
             request,
             self.template_name,
@@ -987,6 +1014,7 @@ class EventAutomationView(generic.ObjectView):
                 'object_type': 'event',
                 'workflows': workflows_with_params,
                 'workflows_count': workflows.count(),
+                'execution_history': execution_history,
             }
         )
 

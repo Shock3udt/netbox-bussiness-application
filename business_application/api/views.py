@@ -10,8 +10,12 @@ from datetime import datetime, date
 
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow,
+    WorkflowExecution, WorkflowExecutionStatus
 )
+from business_application.config import external_workflow_config
+from django.contrib.contenttypes.models import ContentType
+import requests as http_requests
 from business_application.api.serializers import (
     BusinessApplicationSerializer, TechnicalServiceSerializer, ServiceDependencySerializer,
     EventSourceSerializer, EventSerializer, MaintenanceSerializer, ChangeTypeSerializer,
@@ -21,7 +25,8 @@ from business_application.api.serializers import (
     EmailAlertSerializer,
     GitLabPipelineSerializer,
     PagerDutyTemplateSerializer,
-    ExternalWorkflowSerializer
+    ExternalWorkflowSerializer,
+    WorkflowExecutionSerializer
 )
 from dcim.models import Device
 from virtualization.models import Cluster, VirtualMachine
@@ -616,10 +621,15 @@ class ExternalWorkflowViewSet(ModelViewSet):
             "object_id": 123
         }
         """
-        import requests as http_requests
-        
         try:
             workflow = self.get_object()
+
+            # Check if workflow execution is enabled globally
+            if not external_workflow_config.WORKFLOW_EXECUTION_ENABLED:
+                return Response({
+                    'success': False,
+                    'error': 'Workflow execution is disabled in plugin configuration.'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate workflow is enabled
             if not workflow.enabled:
@@ -645,14 +655,18 @@ class ExternalWorkflowViewSet(ModelViewSet):
                     'error': f'This workflow is configured for {workflow.object_type} objects, not {object_type}'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Get the source object
+            # Get the source object and its content type
             source_obj = None
+            content_type = None
             if object_type == 'device':
                 source_obj = Device.objects.filter(pk=object_id).first()
+                content_type = ContentType.objects.get_for_model(Device)
             elif object_type == 'incident':
                 source_obj = Incident.objects.filter(pk=object_id).first()
+                content_type = ContentType.objects.get_for_model(Incident)
             elif object_type == 'event':
                 source_obj = Event.objects.filter(pk=object_id).first()
+                content_type = ContentType.objects.get_for_model(Event)
 
             if not source_obj:
                 return Response({
@@ -663,27 +677,58 @@ class ExternalWorkflowViewSet(ModelViewSet):
             # Generate mapped parameters
             mapped_params = workflow.get_mapped_parameters(source_obj)
 
+            # Create execution log entry
+            execution_log = WorkflowExecution.objects.create(
+                workflow=workflow,
+                user=request.user,
+                content_type=content_type,
+                object_id=source_obj.pk,
+                status=WorkflowExecutionStatus.RUNNING,
+                parameters_sent=mapped_params
+            )
+
             # Execute based on workflow type
             execution_result = None
             
-            if workflow.workflow_type == 'aap':
-                # Execute AAP workflow/job
-                execution_result = self._execute_aap_workflow(workflow, mapped_params, source_obj)
-            elif workflow.workflow_type == 'n8n':
-                # Execute N8N webhook
-                execution_result = self._execute_n8n_webhook(workflow, mapped_params, source_obj)
-            else:
-                return Response({
-                    'success': False,
-                    'error': f'Unknown workflow type: {workflow.workflow_type}'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                if workflow.workflow_type == 'aap':
+                    # Execute AAP workflow/job
+                    execution_result = self._execute_aap_workflow(workflow, mapped_params, source_obj)
+                elif workflow.workflow_type == 'n8n':
+                    # Execute N8N webhook
+                    execution_result = self._execute_n8n_webhook(workflow, mapped_params, source_obj)
+                else:
+                    execution_log.status = WorkflowExecutionStatus.FAILED
+                    execution_log.error_message = f'Unknown workflow type: {workflow.workflow_type}'
+                    execution_log.completed_at = timezone.now()
+                    execution_log.save()
+                    return Response({
+                        'success': False,
+                        'error': f'Unknown workflow type: {workflow.workflow_type}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            logger.info(f'Executed workflow {workflow.name} for {object_type} {object_id} by user {request.user}')
+                # Update execution log with result
+                execution_log.status = WorkflowExecutionStatus.SUCCESS if execution_result.get('success') else WorkflowExecutionStatus.FAILED
+                execution_log.execution_id = execution_result.get('execution_id')
+                execution_log.response_data = execution_result.get('details', {})
+                execution_log.error_message = execution_result.get('error_message') if not execution_result.get('success') else None
+                execution_log.completed_at = timezone.now()
+                execution_log.save()
+
+            except Exception as exec_error:
+                execution_log.status = WorkflowExecutionStatus.FAILED
+                execution_log.error_message = str(exec_error)
+                execution_log.completed_at = timezone.now()
+                execution_log.save()
+                raise
+
+            logger.info(f'Executed workflow {workflow.name} for {object_type} {object_id} by user {request.user} - Execution ID: {execution_log.pk}')
 
             return Response({
                 'success': execution_result.get('success', False),
                 'message': execution_result.get('message', 'Workflow executed'),
                 'execution_id': execution_result.get('execution_id'),
+                'execution_log_id': execution_log.pk,
                 'parameters_sent': mapped_params,
                 'details': execution_result.get('details', {})
             }, status=status.HTTP_200_OK if execution_result.get('success') else status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -697,14 +742,33 @@ class ExternalWorkflowViewSet(ModelViewSet):
 
     def _execute_aap_workflow(self, workflow, params, source_obj):
         """Execute an AAP workflow or job template"""
-        import requests as http_requests
+        from requests.auth import HTTPBasicAuth
         
         try:
+            # Get AAP configuration
+            aap_auth_type = external_workflow_config.AAP_AUTH_TYPE
+            aap_token = external_workflow_config.AAP_TOKEN
+            aap_username = external_workflow_config.AAP_USERNAME
+            aap_password = external_workflow_config.AAP_PASSWORD
+            verify_ssl = external_workflow_config.AAP_VERIFY_SSL
+            timeout = external_workflow_config.AAP_TIMEOUT
+
+            # Use workflow-specific URL or fall back to default
+            aap_url = workflow.aap_url or external_workflow_config.AAP_DEFAULT_URL
+            
+            if not aap_url:
+                return {
+                    'success': False,
+                    'message': 'AAP URL not configured. Set aap_url on the workflow or aap_default_url in plugin config.',
+                    'error_message': 'AAP URL not configured',
+                    'details': {}
+                }
+
             # Determine the API endpoint based on resource type
             if workflow.aap_resource_type == 'workflow':
-                endpoint = f"{workflow.aap_url}/api/v2/workflow_job_templates/{workflow.aap_resource_id}/launch/"
+                endpoint = f"{aap_url.rstrip('/')}/api/v2/workflow_job_templates/{workflow.aap_resource_id}/launch/"
             else:  # job_template
-                endpoint = f"{workflow.aap_url}/api/v2/job_templates/{workflow.aap_resource_id}/launch/"
+                endpoint = f"{aap_url.rstrip('/')}/api/v2/job_templates/{workflow.aap_resource_id}/launch/"
 
             # Build payload
             payload = {}
@@ -721,58 +785,130 @@ class ExternalWorkflowViewSet(ModelViewSet):
                 payload['limit'] = params['limit']
 
             # Log the execution attempt (without sensitive data)
-            logger.info(f'Executing AAP {workflow.aap_resource_type} {workflow.aap_resource_id} at {workflow.aap_url}')
+            logger.info(f'Executing AAP {workflow.aap_resource_type} {workflow.aap_resource_id} at {aap_url} using {aap_auth_type} auth')
 
-            # Note: In production, you would make the actual API call here
-            # For now, we return a simulated success response
-            # The actual implementation would look like:
-            #
-            # response = http_requests.post(
-            #     endpoint,
-            #     json=payload,
-            #     headers={
-            #         'Authorization': f'Bearer {aap_token}',
-            #         'Content-Type': 'application/json'
-            #     },
-            #     verify=True,
-            #     timeout=30
-            # )
-            # 
-            # if response.status_code in [200, 201, 202]:
-            #     data = response.json()
-            #     return {
-            #         'success': True,
-            #         'message': 'AAP workflow triggered successfully',
-            #         'execution_id': data.get('id'),
-            #         'details': data
-            #     }
+            # Determine authentication method
+            auth = None
+            headers = {'Content-Type': 'application/json'}
+            
+            if aap_auth_type == 'basic':
+                # Basic authentication
+                if not aap_username or not aap_password:
+                    logger.warning('AAP basic auth credentials not configured - running in simulation mode')
+                    return {
+                        'success': True,
+                        'message': f'AAP {workflow.get_aap_resource_type_display()} triggered successfully (simulation mode - no credentials configured)',
+                        'execution_id': f'aap-sim-{workflow.aap_resource_id}-{source_obj.pk}',
+                        'details': {
+                            'note': 'AAP basic auth credentials not configured. Set aap_username and aap_password in plugin settings.',
+                            'endpoint': endpoint,
+                            'payload': payload,
+                            'resource_type': workflow.aap_resource_type,
+                            'resource_id': workflow.aap_resource_id,
+                            'auth_type': 'basic'
+                        }
+                    }
+                auth = HTTPBasicAuth(aap_username, aap_password)
+            else:
+                # Token authentication (default)
+                if not aap_token:
+                    logger.warning('AAP token not configured - running in simulation mode')
+                    return {
+                        'success': True,
+                        'message': f'AAP {workflow.get_aap_resource_type_display()} triggered successfully (simulation mode - no token configured)',
+                        'execution_id': f'aap-sim-{workflow.aap_resource_id}-{source_obj.pk}',
+                        'details': {
+                            'note': 'AAP token not configured in plugin settings. Set aap_token to enable actual execution.',
+                            'endpoint': endpoint,
+                            'payload': payload,
+                            'resource_type': workflow.aap_resource_type,
+                            'resource_id': workflow.aap_resource_id,
+                            'auth_type': 'token'
+                        }
+                    }
+                headers['Authorization'] = f'Bearer {aap_token}'
 
-            return {
-                'success': True,
-                'message': f'AAP {workflow.get_aap_resource_type_display()} triggered successfully (simulation mode)',
-                'execution_id': f'aap-sim-{workflow.aap_resource_id}-{source_obj.pk}',
-                'details': {
-                    'note': 'This is a simulation. In production, configure AAP authentication to enable actual execution.',
-                    'endpoint': endpoint,
-                    'payload': payload,
-                    'resource_type': workflow.aap_resource_type,
-                    'resource_id': workflow.aap_resource_id
+            # Make the actual API call
+            response = http_requests.post(
+                endpoint,
+                json=payload,
+                headers=headers,
+                auth=auth,
+                verify=verify_ssl,
+                timeout=timeout
+            )
+            
+            if response.status_code in [200, 201, 202]:
+                data = response.json()
+                job_id = data.get('id') or data.get('job') or data.get('workflow_job')
+                return {
+                    'success': True,
+                    'message': f'AAP {workflow.get_aap_resource_type_display()} triggered successfully',
+                    'execution_id': str(job_id) if job_id else None,
+                    'details': {
+                        'job_id': job_id,
+                        'status': data.get('status'),
+                        'url': data.get('url'),
+                        'created': data.get('created'),
+                        'response_status_code': response.status_code
+                    }
                 }
-            }
+            else:
+                error_detail = response.text[:500] if response.text else 'No error details'
+                logger.error(f'AAP API error: {response.status_code} - {error_detail}')
+                return {
+                    'success': False,
+                    'message': f'AAP API returned error: {response.status_code}',
+                    'error_message': error_detail,
+                    'details': {
+                        'status_code': response.status_code,
+                        'error': error_detail
+                    }
+                }
 
+        except http_requests.exceptions.Timeout:
+            logger.exception('AAP request timeout')
+            return {
+                'success': False,
+                'message': f'AAP request timed out after {timeout} seconds',
+                'error_message': 'Request timeout',
+                'details': {'timeout': timeout}
+            }
+        except http_requests.exceptions.ConnectionError as e:
+            logger.exception(f'AAP connection error: {str(e)}')
+            return {
+                'success': False,
+                'message': f'Failed to connect to AAP: {str(e)}',
+                'error_message': str(e),
+                'details': {'error': str(e)}
+            }
         except Exception as e:
             logger.exception(f'AAP execution error: {str(e)}')
             return {
                 'success': False,
                 'message': f'Failed to execute AAP workflow: {str(e)}',
+                'error_message': str(e),
                 'details': {'error': str(e)}
             }
 
     def _execute_n8n_webhook(self, workflow, params, source_obj):
         """Execute an N8N webhook"""
-        import requests as http_requests
-        
         try:
+            # Get N8N configuration
+            n8n_api_key = external_workflow_config.N8N_API_KEY
+            verify_ssl = external_workflow_config.N8N_VERIFY_SSL
+            timeout = external_workflow_config.N8N_TIMEOUT
+            
+            webhook_url = workflow.n8n_webhook_url
+            
+            if not webhook_url:
+                return {
+                    'success': False,
+                    'message': 'N8N webhook URL not configured on the workflow.',
+                    'error_message': 'Webhook URL not configured',
+                    'details': {}
+                }
+
             # Build payload with object information
             payload = {
                 'source': 'netbox',
@@ -786,42 +922,124 @@ class ExternalWorkflowViewSet(ModelViewSet):
             # Log the execution attempt
             logger.info(f'Executing N8N webhook for workflow {workflow.name}')
 
-            # Note: In production, you would make the actual API call here
-            # The actual implementation would look like:
-            #
-            # response = http_requests.post(
-            #     workflow.n8n_webhook_url,
-            #     json=payload,
-            #     headers={'Content-Type': 'application/json'},
-            #     timeout=30
-            # )
-            # 
-            # if response.status_code in [200, 201, 202]:
-            #     return {
-            #         'success': True,
-            #         'message': 'N8N webhook triggered successfully',
-            #         'execution_id': response.headers.get('X-Execution-Id'),
-            #         'details': {'response': response.text[:500]}
-            #     }
+            # Build headers
+            headers = {'Content-Type': 'application/json'}
+            
+            # Add API key if configured (for authenticated webhooks)
+            if n8n_api_key:
+                headers['X-N8N-API-KEY'] = n8n_api_key
 
-            return {
-                'success': True,
-                'message': 'N8N webhook triggered successfully (simulation mode)',
-                'execution_id': f'n8n-sim-{source_obj.pk}',
-                'details': {
-                    'note': 'This is a simulation. The webhook URL would receive this payload in production.',
-                    'webhook_url': workflow.n8n_webhook_url,
-                    'payload': payload
+            # Make the actual API call
+            response = http_requests.post(
+                webhook_url,
+                json=payload,
+                headers=headers,
+                verify=verify_ssl,
+                timeout=timeout
+            )
+            
+            if response.status_code in [200, 201, 202]:
+                # Try to parse response as JSON, fall back to text
+                try:
+                    response_data = response.json()
+                except ValueError:
+                    response_data = {'response_text': response.text[:500] if response.text else 'No response body'}
+                
+                execution_id = response.headers.get('X-Execution-Id') or response.headers.get('X-N8N-Execution-Id')
+                
+                return {
+                    'success': True,
+                    'message': 'N8N webhook triggered successfully',
+                    'execution_id': execution_id,
+                    'details': {
+                        'response_status_code': response.status_code,
+                        'execution_id': execution_id,
+                        'response': response_data
+                    }
                 }
-            }
+            else:
+                error_detail = response.text[:500] if response.text else 'No error details'
+                logger.error(f'N8N webhook error: {response.status_code} - {error_detail}')
+                return {
+                    'success': False,
+                    'message': f'N8N webhook returned error: {response.status_code}',
+                    'error_message': error_detail,
+                    'details': {
+                        'status_code': response.status_code,
+                        'error': error_detail
+                    }
+                }
 
+        except http_requests.exceptions.Timeout:
+            logger.exception('N8N request timeout')
+            return {
+                'success': False,
+                'message': f'N8N request timed out after {timeout} seconds',
+                'error_message': 'Request timeout',
+                'details': {'timeout': timeout}
+            }
+        except http_requests.exceptions.ConnectionError as e:
+            logger.exception(f'N8N connection error: {str(e)}')
+            return {
+                'success': False,
+                'message': f'Failed to connect to N8N: {str(e)}',
+                'error_message': str(e),
+                'details': {'error': str(e)}
+            }
         except Exception as e:
             logger.exception(f'N8N execution error: {str(e)}')
             return {
                 'success': False,
                 'message': f'Failed to execute N8N webhook: {str(e)}',
+                'error_message': str(e),
                 'details': {'error': str(e)}
             }
+
+
+class WorkflowExecutionViewSet(ModelViewSet):
+    """
+    API endpoint for viewing WorkflowExecution history.
+    Read-only - executions are created via the execute endpoint on ExternalWorkflowViewSet.
+    """
+    queryset = WorkflowExecution.objects.select_related(
+        'workflow', 'user', 'content_type'
+    ).all()
+    serializer_class = WorkflowExecutionSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'head', 'options']  # Read-only
+
+    def get_queryset(self):
+        """
+        Filter workflow executions by various parameters.
+        """
+        queryset = super().get_queryset()
+        workflow_id = self.request.query_params.get('workflow')
+        user_id = self.request.query_params.get('user')
+        status_filter = self.request.query_params.get('status')
+        object_type = self.request.query_params.get('object_type')
+        object_id = self.request.query_params.get('object_id')
+
+        if workflow_id:
+            queryset = queryset.filter(workflow_id=workflow_id)
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if object_type:
+            queryset = queryset.filter(content_type__model=object_type)
+        if object_id:
+            queryset = queryset.filter(object_id=object_id)
+
+        return queryset.order_by('-started_at')
+
+    @action(detail=False, methods=['get'], url_path='my-executions')
+    def my_executions(self, request):
+        """
+        Get executions performed by the current user.
+        """
+        queryset = self.get_queryset().filter(user=request.user)[:50]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class DeviceDownstreamAppsViewSet(ModelViewSet):

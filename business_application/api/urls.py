@@ -6,7 +6,7 @@ from business_application.api.views import (
     BusinessApplicationViewSet, TechnicalServiceViewSet, ServiceDependencyViewSet,
     EventSourceViewSet, EventViewSet, MaintenanceViewSet, ChangeTypeViewSet, ChangeViewSet,
     IncidentViewSet, DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet, AlertIngestionViewSet,
-    PagerDutyTemplateViewSet, ExternalWorkflowViewSet
+    PagerDutyTemplateViewSet, ExternalWorkflowViewSet, WorkflowExecutionViewSet
 )
 from business_application.api.incident_automation_views import IncidentAutomationViewSet
 
@@ -24,6 +24,7 @@ router.register(r'changes', ChangeViewSet, basename='change')
 router.register(r'incidents', IncidentViewSet, basename='incident')
 router.register(r'pagerduty-templates', PagerDutyTemplateViewSet, basename='pagerdutytemplate')
 router.register(r'external-workflows', ExternalWorkflowViewSet, basename='externalworkflow')
+router.register(r'workflow-executions', WorkflowExecutionViewSet, basename='workflowexecution')
 router.register(r'alerts', AlertIngestionViewSet, basename='alert-ingestion')
 
 

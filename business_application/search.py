@@ -1,7 +1,7 @@
 from netbox.search import SearchIndex
 from .models import (
     BusinessApplication, TechnicalService, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, ExternalWorkflow
+    Maintenance, ChangeType, Change, Incident, ExternalWorkflow, WorkflowExecution
 )
 
 class BusinessApplicationIndex(SearchIndex):
@@ -76,6 +76,14 @@ class ExternalWorkflowIndex(SearchIndex):
         ('object_type', 300),
     )
 
+class WorkflowExecutionIndex(SearchIndex):
+    model = WorkflowExecution
+    fields = (
+        ('status', 100),
+        ('execution_id', 200),
+        ('error_message', 300),
+    )
+
 indexes = [
     BusinessApplicationIndex,
     TechnicalServiceIndex,
@@ -86,4 +94,5 @@ indexes = [
     ChangeIndex,
     IncidentIndex,
     ExternalWorkflowIndex,
+    WorkflowExecutionIndex,
 ]
