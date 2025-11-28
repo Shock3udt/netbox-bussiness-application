@@ -11,7 +11,8 @@ from .models import (
 )
 from .forms import (
     BusinessApplicationForm, TechnicalServiceForm, ServiceDependencyForm, EventSourceForm, EventForm,
-    MaintenanceForm, ChangeTypeForm, ChangeForm, IncidentForm, PagerDutyTemplateForm, TechnicalServicePagerDutyForm
+    MaintenanceForm, ChangeTypeForm, ChangeForm, IncidentForm, PagerDutyTemplateForm, TechnicalServicePagerDutyForm,
+    TechnicalServiceAssignDevicesForm, TechnicalServiceAssignVMsForm, TechnicalServiceAssignClustersForm
 )
 from .tables import (
     BusinessApplicationTable, TechnicalServiceTable, ServiceDependencyTable,
@@ -24,6 +25,7 @@ from .filtersets import (
     MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter, PagerDutyTemplateFilter
 )
 from django.http import JsonResponse
+from django.urls import reverse
 from dcim.models import Device
 from virtualization.models import VirtualMachine, Cluster
 
@@ -150,6 +152,43 @@ class TechnicalServicePagerDutyEditView(generic.ObjectEditView):
     def get_object(self, **kwargs):
         obj = super().get_object(**kwargs)
         return obj
+
+
+class TechnicalServiceAssignDevicesView(generic.ObjectEditView):
+    """
+    View for assigning existing devices to a TechnicalService.
+    """
+    queryset = TechnicalService.objects.all()
+    form = TechnicalServiceAssignDevicesForm
+    template_name = 'generic/object_edit.html'
+
+    def get_return_url(self, request, obj=None):
+        return reverse('plugins:business_application:technicalservice_operations', kwargs={'pk': obj.pk})
+
+
+class TechnicalServiceAssignVMsView(generic.ObjectEditView):
+    """
+    View for assigning existing virtual machines to a TechnicalService.
+    """
+    queryset = TechnicalService.objects.all()
+    form = TechnicalServiceAssignVMsForm
+    template_name = 'generic/object_edit.html'
+
+    def get_return_url(self, request, obj=None):
+        return reverse('plugins:business_application:technicalservice_operations', kwargs={'pk': obj.pk})
+
+
+class TechnicalServiceAssignClustersView(generic.ObjectEditView):
+    """
+    View for assigning existing clusters to a TechnicalService.
+    """
+    queryset = TechnicalService.objects.all()
+    form = TechnicalServiceAssignClustersForm
+    template_name = 'generic/object_edit.html'
+
+    def get_return_url(self, request, obj=None):
+        return reverse('plugins:business_application:technicalservice_operations', kwargs={'pk': obj.pk})
+
 
 class TechnicalServiceDetailView(generic.ObjectView):
     queryset = TechnicalService.objects.all()

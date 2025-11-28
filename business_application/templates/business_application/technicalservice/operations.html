@@ -85,6 +85,9 @@
                             <a href="/dcim/devices/add/?technical_services={{ object.id }}" class="btn btn-sm btn-primary">
                                 <i class="mdi mdi-plus"></i> Add Device
                             </a>
+                            <a href="{% url 'plugins:business_application:technicalservice_assign_devices' pk=object.pk %}" class="btn btn-sm btn-outline-primary">
+                                <i class="mdi mdi-link-plus"></i> Assign Device
+                            </a>
                         </div>
                     </div>
                     <div class="col-md-4 text-center">
@@ -94,6 +97,9 @@
                             <a href="/virtualization/virtual-machines/add/?technical_services={{ object.id }}" class="btn btn-sm btn-info">
                                 <i class="mdi mdi-plus"></i> Add VM
                             </a>
+                            <a href="{% url 'plugins:business_application:technicalservice_assign_vms' pk=object.pk %}" class="btn btn-sm btn-outline-info">
+                                <i class="mdi mdi-link-plus"></i> Assign VM
+                            </a>
                         </div>
                     </div>
                     <div class="col-md-4 text-center">
@@ -102,6 +108,9 @@
                         <div class="mt-2">
                             <a href="/virtualization/clusters/add/?technical_services={{ object.id }}" class="btn btn-sm btn-success">
                                 <i class="mdi mdi-plus"></i> Add Cluster
+                            </a>
+                            <a href="{% url 'plugins:business_application:technicalservice_assign_clusters' pk=object.pk %}" class="btn btn-sm btn-outline-success">
+                                <i class="mdi mdi-link-plus"></i> Assign Cluster
                             </a>
                         </div>
                     </div>
