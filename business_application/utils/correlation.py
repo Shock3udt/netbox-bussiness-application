@@ -236,9 +236,14 @@ class AlertCorrelationEngine:
     ) -> bool:
         """
         Determine if an event should be correlated with an incident.
+        Only critical/high criticality with triggered/suppressed status.
         """
-
+        # Must be critical or high criticality
         if event.criticallity not in ['critical', 'high']:
+            return False
+
+        # Must be triggered or suppressed status
+        if event.status not in ['triggered', 'suppressed']:
             return False
 
         return True
@@ -246,6 +251,7 @@ class AlertCorrelationEngine:
     def _should_create_incident(self, event: Event) -> bool:
         """
         Determine if an event should trigger incident creation.
+        Only triggered events create NEW incidents.
         """
         if event.status != 'triggered':
             return False

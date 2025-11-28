@@ -5,9 +5,10 @@ from django.views.generic import TemplateView
 from django.db.models import Q
 from django.utils import timezone
 from datetime import datetime, timedelta
+from django.contrib.contenttypes.models import ContentType
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, Event, EventCrit, EventStatus
 )
 from .forms import (
     BusinessApplicationForm, TechnicalServiceForm, ServiceDependencyForm, EventSourceForm, EventForm,
@@ -337,11 +338,49 @@ class IncidentChangeLogView(generic.ObjectChangeLogView):
 class IncidentDetailView(generic.ObjectView):
     queryset = Incident.objects.all()
     template_name = 'business_application/incident/incident.html'
-    
+
     def get_extra_context(self, request, instance):
         """Add context events to the template context"""
         context = super().get_extra_context(request, instance)
-        context['context_events'] = instance.get_recent_context_events(limit=20)
+
+        # Get recent context events (non-critical/high events from affected infrastructure)
+        context_events = Event.objects.none()
+
+        if instance.affected_services.exists():
+            # Get all devices, VMs, and services using Django ORM (efficient - done in database)
+            device_ids = Device.objects.filter(
+                technical_services__in=instance.affected_services.all()
+            ).values_list('id', flat=True)
+
+            vm_ids = VirtualMachine.objects.filter(
+                technical_services__in=instance.affected_services.all()
+            ).values_list('id', flat=True)
+
+            service_ids = instance.affected_services.values_list('id', flat=True)
+
+            # Only query if we have targets
+            if device_ids or vm_ids or service_ids:
+                device_ct = ContentType.objects.get_for_model(Device)
+                vm_ct = ContentType.objects.get_for_model(VirtualMachine)
+                service_ct = ContentType.objects.get_for_model(TechnicalService)
+
+                # Get events that are either:
+                # - Not critical/high severity, OR
+                # - Have OK status
+                context_events = Event.objects.filter(
+                    (
+                        ~Q(criticallity__in=[EventCrit.CRITICAL, EventCrit.HIGH]) |
+                        Q(status=EventStatus.OK)
+                    ) & (
+                        Q(content_type=device_ct, object_id__in=device_ids) |
+                        Q(content_type=vm_ct, object_id__in=vm_ids) |
+                        Q(content_type=service_ct, object_id__in=service_ids)
+                    )
+                ).exclude(
+                    incidents=instance
+                ).order_by('-last_seen_at')[:20]
+
+        context['context_events'] = context_events
         return context
 
 class IncidentCreateView(generic.ObjectEditView):

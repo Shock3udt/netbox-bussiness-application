@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, EventCrit, EventStatus
 )
 from dcim.models import Device
 from virtualization.models import VirtualMachine
@@ -486,7 +486,43 @@ class IncidentSerializer(serializers.ModelSerializer):
         Get last 20 non-incident events from devices affected by this incident.
         These provide context but are not assigned to the incident.
         """
-        context_events = obj.get_recent_context_events(limit=20)
+        from django.contrib.contenttypes.models import ContentType
+        from django.db.models import Q
+        from dcim.models import Device
+        from virtualization.models import VirtualMachine
+        from business_application.models import TechnicalService, Event, EventCrit, EventStatus
+
+        context_events = []
+
+        if obj.affected_services.exists():
+            # Get all devices, VMs, and services using Django ORM (database-level query)
+            device_ids = Device.objects.filter(
+                technical_services__in=obj.affected_services.all()
+            ).values_list('id', flat=True)
+
+            vm_ids = VirtualMachine.objects.filter(
+                technical_services__in=obj.affected_services.all()
+            ).values_list('id', flat=True)
+
+            service_ids = obj.affected_services.values_list('id', flat=True)
+
+            if device_ids or vm_ids or service_ids:
+                device_ct = ContentType.objects.get_for_model(Device)
+                vm_ct = ContentType.objects.get_for_model(VirtualMachine)
+                service_ct = ContentType.objects.get_for_model(TechnicalService)
+
+                context_events = Event.objects.filter(
+                    (
+                        ~Q(criticallity__in=[EventCrit.CRITICAL, EventCrit.HIGH]) |
+                        Q(status=EventStatus.OK)
+                    ) & (
+                        Q(content_type=device_ct, object_id__in=device_ids) |
+                        Q(content_type=vm_ct, object_id__in=vm_ids) |
+                        Q(content_type=service_ct, object_id__in=service_ids)
+                    )
+                ).exclude(
+                    incidents=obj
+                ).order_by('-last_seen_at')[:20]
 
         return [
             {
