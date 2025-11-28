@@ -284,12 +284,28 @@
 {{ block.super }}
 
 <script>
-// Store CSRF token for API calls
-const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || 
-                  document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+// Get CSRF token from cookie (Django/NetBox standard way)
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+const csrfToken = getCookie('csrftoken');
 
 // Pretty print parameters on page load
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Automation tab loaded');
+    
     // Pretty print all parameter pre elements
     document.querySelectorAll('pre[id^="params-"]').forEach(function(element) {
         try {
@@ -312,12 +328,22 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function showParameters(workflowId, workflowName) {
+    console.log('showParameters called:', workflowId, workflowName);
+    
     // Open the accordion for the specified workflow
     const collapseElement = document.getElementById('collapse-' + workflowId);
     if (collapseElement) {
-        const bsCollapse = new bootstrap.Collapse(collapseElement, {
-            show: true
-        });
+        // Check if bootstrap is available
+        if (typeof bootstrap !== 'undefined' && bootstrap.Collapse) {
+            const bsCollapse = new bootstrap.Collapse(collapseElement, {
+                toggle: true
+            });
+        } else {
+            // Fallback: manually toggle the collapse class
+            collapseElement.classList.toggle('show');
+        }
+    } else {
+        console.error('Could not find collapse element:', 'collapse-' + workflowId);
     }
     
     // Scroll to the accordion
@@ -328,13 +354,23 @@ function showParameters(workflowId, workflowName) {
 }
 
 function executeWorkflow(button) {
+    console.log('executeWorkflow called');
+    
     const workflowId = button.dataset.workflowId;
     const workflowName = button.dataset.workflowName;
     const objectType = button.dataset.objectType;
-    const objectId = button.dataset.objectId;
+    const objectId = parseInt(button.dataset.objectId, 10);
     
-    // Show modal with loading state
-    const modal = new bootstrap.Modal(document.getElementById('executionResultModal'));
+    console.log('Executing workflow:', workflowId, 'for', objectType, objectId);
+    
+    // Get or create modal
+    let modalElement = document.getElementById('executionResultModal');
+    let modal;
+    
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    }
+    
     document.getElementById('executionResultModalLabel').innerHTML = 
         '<i class="mdi mdi-robot"></i> Executing: ' + workflowName;
     document.getElementById('executionResultBody').innerHTML = `
@@ -345,27 +381,50 @@ function executeWorkflow(button) {
             <p class="mt-2">Executing workflow...</p>
         </div>
     `;
-    modal.show();
+    
+    if (modal) {
+        modal.show();
+    } else {
+        // Fallback: manually show modal
+        modalElement.classList.add('show');
+        modalElement.style.display = 'block';
+        document.body.classList.add('modal-open');
+    }
     
     // Disable button during execution
     button.disabled = true;
     const originalContent = button.innerHTML;
     button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Running...';
     
+    // Build the API URL
+    const apiUrl = '/api/plugins/business-application/external-workflows/' + workflowId + '/execute/';
+    console.log('API URL:', apiUrl);
+    console.log('CSRF Token:', csrfToken ? 'present' : 'missing');
+    
     // Make API call to execute workflow
-    fetch('/api/plugins/business-application/external-workflows/' + workflowId + '/execute/', {
+    fetch(apiUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': csrfToken,
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
             object_type: objectType,
             object_id: objectId
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text}`);
+            });
+        }
+        return response.json();
+    })
     .then(data => {
+        console.log('Response data:', data);
         let resultHtml = '';
         
         if (data.success) {
@@ -435,6 +494,7 @@ function executeWorkflow(button) {
         document.getElementById('executionResultBody').innerHTML = resultHtml;
     })
     .catch(error => {
+        console.error('Fetch error:', error);
         document.getElementById('executionResultBody').innerHTML = `
             <div class="alert alert-danger">
                 <h5><i class="mdi mdi-alert-circle"></i> Request Failed</h5>
