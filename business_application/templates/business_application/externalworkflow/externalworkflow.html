@@ -1,0 +1,292 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load static %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li class="breadcrumb-item"><a href="{% url 'plugins:business_application:externalworkflow_list' %}">External Workflows</a></li>
+{% endblock %}
+
+{% block content %}
+<!-- Workflow Information -->
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-workflow"></i> Workflow Information
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <td>Name</td>
+                        <td>{{ object.name }}</td>
+                    </tr>
+                    <tr>
+                        <td>Description</td>
+                        <td>{{ object.description|default:"No description" }}</td>
+                    </tr>
+                    <tr>
+                        <td>Workflow Type</td>
+                        <td>
+                            {% if object.workflow_type == "aap" %}
+                                <span class="badge bg-primary"><i class="mdi mdi-ansible"></i> Ansible Automation Platform</span>
+                            {% elif object.workflow_type == "n8n" %}
+                                <span class="badge bg-success"><i class="mdi mdi-webhook"></i> N8N</span>
+                            {% else %}
+                                {{ object.get_workflow_type_display }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Status</td>
+                        <td>
+                            {% if object.enabled %}
+                                <span class="badge bg-success"><i class="mdi mdi-check-circle"></i> Enabled</span>
+                            {% else %}
+                                <span class="badge bg-secondary"><i class="mdi mdi-minus-circle"></i> Disabled</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Trigger Object Type</td>
+                        <td>
+                            {% if object.object_type == "device" %}
+                                <span class="badge bg-info"><i class="mdi mdi-server"></i> Device</span>
+                            {% elif object.object_type == "incident" %}
+                                <span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Incident</span>
+                            {% elif object.object_type == "event" %}
+                                <span class="badge bg-warning text-dark"><i class="mdi mdi-bell-ring"></i> Event</span>
+                            {% else %}
+                                {{ object.get_object_type_display }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Platform Configuration -->
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                {% if object.workflow_type == "aap" %}
+                    <i class="mdi mdi-ansible"></i> AAP Configuration
+                {% elif object.workflow_type == "n8n" %}
+                    <i class="mdi mdi-webhook"></i> N8N Configuration
+                {% else %}
+                    Platform Configuration
+                {% endif %}
+            </h5>
+            <div class="card-body">
+                {% if object.workflow_type == "aap" %}
+                    <table class="table table-hover attr-table">
+                        <tr>
+                            <td>AAP Controller URL</td>
+                            <td>
+                                {% if object.aap_url %}
+                                    <a href="{{ object.aap_url }}" target="_blank">
+                                        {{ object.aap_url }}
+                                        <i class="mdi mdi-open-in-new"></i>
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted">Not configured</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Resource Type</td>
+                            <td>
+                                {% if object.aap_resource_type == "workflow" %}
+                                    <span class="badge bg-purple"><i class="mdi mdi-sitemap"></i> Workflow Template</span>
+                                {% elif object.aap_resource_type == "job_template" %}
+                                    <span class="badge bg-blue"><i class="mdi mdi-play-circle"></i> Job Template</span>
+                                {% else %}
+                                    {{ object.get_aap_resource_type_display|default:"Not specified" }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Resource ID</td>
+                            <td>
+                                {% if object.aap_resource_id %}
+                                    <code>{{ object.aap_resource_id }}</code>
+                                    {% if object.aap_url %}
+                                        {% if object.aap_resource_type == "workflow" %}
+                                        <a href="{{ object.aap_url }}/#/templates/workflow_job_template/{{ object.aap_resource_id }}/" target="_blank" class="btn btn-sm btn-outline-info ms-2">
+                                            <i class="mdi mdi-open-in-new"></i> View in AAP
+                                        </a>
+                                        {% else %}
+                                        <a href="{{ object.aap_url }}/#/templates/job_template/{{ object.aap_resource_id }}/" target="_blank" class="btn btn-sm btn-outline-info ms-2">
+                                            <i class="mdi mdi-open-in-new"></i> View in AAP
+                                        </a>
+                                        {% endif %}
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">Not configured</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                {% elif object.workflow_type == "n8n" %}
+                    <table class="table table-hover attr-table">
+                        <tr>
+                            <td>Webhook URL</td>
+                            <td>
+                                {% if object.n8n_webhook_url %}
+                                    <code class="text-break">{{ object.n8n_webhook_url }}</code>
+                                {% else %}
+                                    <span class="text-muted">Not configured</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                {% else %}
+                    <p class="text-muted">No platform configuration available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attribute Mapping -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-code-json"></i> Attribute Mapping
+                <div class="float-end">
+                    <button class="btn btn-sm btn-outline-info" onclick="exportMappingConfig()">
+                        <i class="mdi mdi-download"></i> Export JSON
+                    </button>
+                </div>
+            </h5>
+            <div class="card-body">
+                {% if object.attribute_mapping %}
+                    <div class="mb-3">
+                        <p class="text-muted">
+                            {% if object.workflow_type == "aap" %}
+                                This mapping defines how object attributes are mapped to AAP extra_vars and limit parameters.
+                            {% elif object.workflow_type == "n8n" %}
+                                This mapping defines how object attributes are mapped to N8N webhook payload fields.
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="card bg-light">
+                        <div class="card-body p-2">
+                            <pre id="mapping-config-json" class="mb-0" style="max-height: 400px; overflow-y: auto; font-size: 0.875em;">{{ object.attribute_mapping|safe }}</pre>
+                        </div>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No attribute mapping configured. Default object data will be used.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mapping Reference -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-help-circle"></i> Mapping Reference
+            </h5>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6><i class="mdi mdi-server"></i> Device Attributes</h6>
+                        <ul class="list-unstyled">
+                            <li><code>object.name</code> - Device name</li>
+                            <li><code>object.primary_ip4.address</code> - Primary IPv4</li>
+                            <li><code>object.primary_ip6.address</code> - Primary IPv6</li>
+                            <li><code>object.site.name</code> - Site name</li>
+                            <li><code>object.device_type.model</code> - Device model</li>
+                            <li><code>object.role.name</code> - Device role</li>
+                            <li><code>object.status</code> - Device status</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-4">
+                        <h6><i class="mdi mdi-alert-circle"></i> Incident Attributes</h6>
+                        <ul class="list-unstyled">
+                            <li><code>object.title</code> - Incident title</li>
+                            <li><code>object.description</code> - Description</li>
+                            <li><code>object.severity</code> - Severity level</li>
+                            <li><code>object.status</code> - Current status</li>
+                            <li><code>object.commander</code> - Incident commander</li>
+                            <li><code>object.created_at</code> - Creation time</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-4">
+                        <h6><i class="mdi mdi-bell-ring"></i> Event Attributes</h6>
+                        <ul class="list-unstyled">
+                            <li><code>object.message</code> - Event message</li>
+                            <li><code>object.status</code> - Event status</li>
+                            <li><code>object.criticallity</code> - Criticality level</li>
+                            <li><code>object.dedup_id</code> - Deduplication ID</li>
+                            <li><code>object.event_source.name</code> - Event source</li>
+                            <li><code>object.created_at</code> - Creation time</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+
+<!-- Properly serialize config using Django's json_script -->
+{% if object.attribute_mapping %}
+    {{ object.attribute_mapping|json_script:"mapping-config-data" }}
+{% endif %}
+
+<script>
+// Global config variable
+var mappingConfig = null;
+{% if object.attribute_mapping %}
+try {
+    const configElement = document.getElementById('mapping-config-data');
+    if (configElement) {
+        mappingConfig = JSON.parse(configElement.textContent);
+    }
+} catch (e) {
+    console.error('Error parsing mapping config:', e);
+    mappingConfig = null;
+}
+{% endif %}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Pretty print the JSON configuration
+    const configElement = document.getElementById('mapping-config-json');
+    if (configElement && mappingConfig) {
+        try {
+            configElement.textContent = JSON.stringify(mappingConfig, null, 2);
+        } catch (e) {
+            console.warn('Could not pretty print mapping configuration:', e);
+        }
+    }
+});
+
+function exportMappingConfig() {
+    if (mappingConfig) {
+        try {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(mappingConfig, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "{{ object.name|slugify }}_attribute_mapping.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        } catch (e) {
+            alert('Error exporting configuration: ' + e.message);
+        }
+    } else {
+        alert('No mapping configuration to export.');
+    }
+}
+</script>
+{% endblock %}
+
