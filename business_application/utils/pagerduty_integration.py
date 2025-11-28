@@ -1,12 +1,24 @@
 # business_application/utils/pagerduty_integration.py
+"""
+PagerDuty integration module for NetBox Business Application plugin.
+
+Handles:
+- Creating PagerDuty incidents from NetBox incidents
+- Resolving PagerDuty incidents when NetBox incidents are resolved
+- Acknowledging PagerDuty incidents when NetBox incidents are being investigated
+
+Routing Key Priority:
+1. First affected TechnicalService with pagerduty_routing_key
+2. First affected BusinessApplication with pagerduty_routing_key
+3. Global fallback from plugin settings (pagerduty_events_api_key)
+"""
+
 import requests
 import json
-import uuid
 import logging
 from datetime import datetime, timezone
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from django.conf import settings
-from business_application.models import Incident, TechnicalService
 
 logger = logging.getLogger('business_application.pagerduty')
 
@@ -18,6 +30,8 @@ class PagerDutyIncidentManager:
     """
     Handles PagerDuty incident creation and management for NetBox incidents.
     Uses the PagerDuty Events API v2 to create incidents via event orchestration.
+
+    Supports per-service and per-application routing keys.
     """
 
     def __init__(self):
@@ -32,13 +46,58 @@ class PagerDutyIncidentManager:
         ).get('pagerduty_incident_creation_enabled', False)
 
     @property
-    def routing_key(self) -> Optional[str]:
-        """Get the PagerDuty routing key from settings."""
-        return getattr(settings, 'PLUGINS_CONFIG', {}).get(
+    def global_routing_key(self) -> Optional[str]:
+        """Get the global/fallback PagerDuty routing key from settings."""
+        key = getattr(settings, 'PLUGINS_CONFIG', {}).get(
             'business_application', {}
-        ).get('pagerduty_events_api_key', '').strip()
+        ).get('pagerduty_events_api_key', '')
+        return key.strip() if key else None
 
-    def create_pagerduty_incident(self, netbox_incident: Incident) -> Optional[Dict]:
+    def get_routing_key_for_incident(self, incident) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Determine the appropriate routing key for an incident.
+
+        Priority:
+        1. First affected TechnicalService with pagerduty_routing_key
+        2. First affected BusinessApplication with pagerduty_routing_key
+        3. Global fallback from plugin settings
+
+        Args:
+            incident: The NetBox Incident object
+
+        Returns:
+            Tuple of (routing_key, source_description)
+            source_description indicates where the key came from
+        """
+        # Priority 1: Check TechnicalServices
+        for service in incident.affected_services.all():
+            routing_key = getattr(service, 'pagerduty_routing_key', None)
+            if routing_key:
+                self.logger.debug(
+                    f"Using routing key from TechnicalService '{service.name}' for incident {incident.id}"
+                )
+                return routing_key, f"TechnicalService: {service.name}"
+
+        # Priority 2: Check BusinessApplications (via affected services)
+        for service in incident.affected_services.all():
+            for app in service.business_apps.all():
+                routing_key = getattr(app, 'pagerduty_routing_key', None)
+                if routing_key:
+                    self.logger.debug(
+                        f"Using routing key from BusinessApplication '{app.name}' for incident {incident.id}"
+                    )
+                    return routing_key, f"BusinessApplication: {app.name}"
+
+        # Priority 3: Global fallback
+        if self.global_routing_key:
+            self.logger.debug(
+                f"Using global routing key for incident {incident.id}"
+            )
+            return self.global_routing_key, "Global (plugin settings)"
+
+        return None, None
+
+    def create_pagerduty_incident(self, netbox_incident) -> Optional[Dict]:
         """
         Create a PagerDuty incident for the given NetBox incident.
 
@@ -52,12 +111,22 @@ class PagerDutyIncidentManager:
             self.logger.debug("PagerDuty integration is disabled")
             return None
 
-        if not self.routing_key:
-            self.logger.error("PagerDuty routing key not configured")
+        routing_key, routing_source = self.get_routing_key_for_incident(netbox_incident)
+
+        if not routing_key:
+            self.logger.warning(
+                f"No PagerDuty routing key found for incident {netbox_incident.id}. "
+                f"Configure routing key on TechnicalService, BusinessApplication, or in plugin settings."
+            )
             return None
 
         try:
-            payload = self._build_pagerduty_payload(netbox_incident)
+            self.logger.info(
+                f"Creating PagerDuty incident for NetBox incident {netbox_incident.id} "
+                f"using routing key from: {routing_source}"
+            )
+
+            payload = self._build_pagerduty_payload(netbox_incident, routing_key)
             response = self._send_pagerduty_request(payload)
 
             if response and 'dedup_key' in response:
@@ -67,7 +136,7 @@ class PagerDutyIncidentManager:
 
                 self.logger.info(
                     f"Successfully created PagerDuty incident for NetBox incident {netbox_incident.id}, "
-                    f"dedup_key: {response['dedup_key']}"
+                    f"dedup_key: {response['dedup_key']}, routing_source: {routing_source}"
                 )
                 return response
             else:
@@ -83,7 +152,7 @@ class PagerDutyIncidentManager:
             )
             return None
 
-    def resolve_pagerduty_incident(self, netbox_incident: Incident) -> Optional[Dict]:
+    def resolve_pagerduty_incident(self, netbox_incident) -> Optional[Dict]:
         """
         Resolve a PagerDuty incident when the NetBox incident is resolved.
 
@@ -93,7 +162,8 @@ class PagerDutyIncidentManager:
         Returns:
             Dict containing PagerDuty response or None if resolution failed
         """
-        if not self.is_enabled or not self.routing_key:
+        if not self.is_enabled:
+            self.logger.debug("PagerDuty integration is disabled")
             return None
 
         # Check if we have the PagerDuty dedup key saved
@@ -104,11 +174,20 @@ class PagerDutyIncidentManager:
             )
             return None
 
+        routing_key, routing_source = self.get_routing_key_for_incident(netbox_incident)
+
+        if not routing_key:
+            self.logger.error(
+                f"No PagerDuty routing key found for incident {netbox_incident.id}. "
+                f"Cannot resolve PagerDuty incident without routing key."
+            )
+            return None
+
         dedup_key = netbox_incident.pagerduty_dedup_key
 
         try:
             payload = {
-                "routing_key": self.routing_key,
+                "routing_key": routing_key,
                 "event_action": "resolve",
                 "dedup_key": dedup_key,
                 "client": "NetBox Business Application",
@@ -120,7 +199,7 @@ class PagerDutyIncidentManager:
             if response:
                 self.logger.info(
                     f"Successfully resolved PagerDuty incident for NetBox incident {netbox_incident.id} "
-                    f"using dedup_key: {dedup_key}"
+                    f"using dedup_key: {dedup_key}, routing_source: {routing_source}"
                 )
                 return response
             else:
@@ -136,7 +215,70 @@ class PagerDutyIncidentManager:
             )
             return None
 
-    def _build_pagerduty_payload(self, incident: Incident) -> Dict:
+    def acknowledge_pagerduty_incident(self, netbox_incident) -> Optional[Dict]:
+        """
+        Acknowledge a PagerDuty incident when the NetBox incident is being investigated.
+
+        Args:
+            netbox_incident: The NetBox incident that is being acknowledged
+
+        Returns:
+            Dict containing PagerDuty response or None if acknowledgment failed
+        """
+        if not self.is_enabled:
+            self.logger.debug("PagerDuty integration is disabled")
+            return None
+
+        # Check if we have the PagerDuty dedup key saved
+        if not netbox_incident.pagerduty_dedup_key:
+            self.logger.warning(
+                f"No PagerDuty dedup key found for NetBox incident {netbox_incident.id}. "
+                f"This incident was likely not created in PagerDuty, skipping acknowledgment."
+            )
+            return None
+
+        routing_key, routing_source = self.get_routing_key_for_incident(netbox_incident)
+
+        if not routing_key:
+            self.logger.error(
+                f"No PagerDuty routing key found for incident {netbox_incident.id}. "
+                f"Cannot acknowledge PagerDuty incident without routing key."
+            )
+            return None
+
+        dedup_key = netbox_incident.pagerduty_dedup_key
+
+        try:
+            payload = {
+                "routing_key": routing_key,
+                "event_action": "acknowledge",
+                "dedup_key": dedup_key,
+                "client": "NetBox Business Application",
+                "client_url": self._get_netbox_incident_url(netbox_incident),
+            }
+
+            response = self._send_pagerduty_request(payload)
+
+            if response:
+                self.logger.info(
+                    f"Successfully acknowledged PagerDuty incident for NetBox incident {netbox_incident.id} "
+                    f"using dedup_key: {dedup_key}, routing_source: {routing_source}"
+                )
+                return response
+            else:
+                self.logger.error(
+                    f"Failed to acknowledge PagerDuty incident for NetBox incident {netbox_incident.id} "
+                    f"using dedup_key: {dedup_key}"
+                )
+                return None
+
+        except Exception as e:
+            self.logger.exception(
+                f"Error acknowledging PagerDuty incident for NetBox incident {netbox_incident.id}: {str(e)}"
+            )
+            return None
+
+    def _build_pagerduty_payload(self, incident, routing_key: str) -> Dict:
         """Build the PagerDuty Events API payload for an incident."""
 
         # Generate timestamp in ISO 8601 format with UTC
@@ -161,6 +303,7 @@ class PagerDutyIncidentManager:
                 "name": service.name,
                 "type": service.service_type,
                 "has_pagerduty_integration": service.has_pagerduty_integration,
+                "has_routing_key": bool(getattr(service, 'pagerduty_routing_key', None)),
             }
             if service.pagerduty_service_definition:
                 service_info["pagerduty_template"] = service.pagerduty_service_definition.name
@@ -168,10 +311,20 @@ class PagerDutyIncidentManager:
 
         # Get related events information
         related_events = list(incident.events.all())
-        event_sources = list(set([event.event_source.name for event in related_events if event.event_source]))
+        event_sources = list(set([
+            event.event_source.name
+            for event in related_events
+            if event.event_source
+        ]))
+
+        # Get business applications
+        business_apps = set()
+        for service in affected_services:
+            for app in service.business_apps.all():
+                business_apps.add(app.name)
 
         payload = {
-            "routing_key": self.routing_key,
+            "routing_key": routing_key,
             "event_action": "trigger",
             "dedup_key": self._generate_dedup_key(incident),
             "client": "NetBox Business Application",
@@ -198,6 +351,7 @@ class PagerDutyIncidentManager:
                     "Affected Services": service_names,
                     "Service Count": len(affected_services),
                     "Service Details": service_details,
+                    "Business Applications": list(business_apps),
                     "Related Events Count": len(related_events),
                     "Event Sources": event_sources,
                     "Responders Count": incident.responders.count() if hasattr(incident, 'responders') else 0,
@@ -207,11 +361,11 @@ class PagerDutyIncidentManager:
 
         return payload
 
-    def _generate_dedup_key(self, incident: Incident) -> str:
+    def _generate_dedup_key(self, incident) -> str:
         """Generate a unique deduplication key for the incident."""
         return f"netbox-incident-{incident.id}"
 
-    def _generate_summary(self, incident: Incident, service_names: List[str]) -> str:
+    def _generate_summary(self, incident, service_names: List[str]) -> str:
         """Generate a concise summary for the PagerDuty incident."""
         if service_names:
             services_text = ", ".join(service_names[:3])
@@ -221,7 +375,7 @@ class PagerDutyIncidentManager:
         else:
             return f"NetBox Incident: {incident.title[:150]}"
 
-    def _get_netbox_incident_url(self, incident: Incident) -> str:
+    def _get_netbox_incident_url(self, incident) -> str:
         """Generate the full NetBox URL for the incident."""
         base_url = getattr(settings, 'BASE_URL', 'https://netbox.example.com')
         if base_url.endswith('/'):
@@ -267,8 +421,8 @@ class PagerDutyIncidentManager:
             return None
 
 
-# Convenience function for easy importing
-def create_pagerduty_incident(netbox_incident: Incident) -> Optional[Dict]:
+# Convenience functions for easy importing
+def create_pagerduty_incident(netbox_incident) -> Optional[Dict]:
     """
     Convenience function to create a PagerDuty incident.
 
@@ -282,7 +436,7 @@ def create_pagerduty_incident(netbox_incident: Incident) -> Optional[Dict]:
     return manager.create_pagerduty_incident(netbox_incident)
 
 
-def resolve_pagerduty_incident(netbox_incident: Incident) -> Optional[Dict]:
+def resolve_pagerduty_incident(netbox_incident) -> Optional[Dict]:
     """
     Convenience function to resolve a PagerDuty incident.
 
@@ -294,3 +448,40 @@ def resolve_pagerduty_incident(netbox_incident: Incident) -> Optional[Dict]:
     """
     manager = PagerDutyIncidentManager()
     return manager.resolve_pagerduty_incident(netbox_incident)
+
+
+def acknowledge_pagerduty_incident(netbox_incident) -> Optional[Dict]:
+    """
+    Convenience function to acknowledge a PagerDuty incident.
+
+    Args:
+        netbox_incident: The NetBox incident that is being acknowledged
+
+    Returns:
+        Dict containing PagerDuty response or None if acknowledgment failed
+    """
+    manager = PagerDutyIncidentManager()
+    return manager.acknowledge_pagerduty_incident(netbox_incident)
+
+
+def get_routing_key_info(netbox_incident) -> Dict:
+    """
+    Get information about which routing key would be used for an incident.
+    Useful for debugging and UI display.
+
+    Args:
+        netbox_incident: The NetBox incident to check
+
+    Returns:
+        Dict with routing key information
+    """
+    manager = PagerDutyIncidentManager()
+    routing_key, source = manager.get_routing_key_for_incident(netbox_incident)
+
+    return {
+        'has_routing_key': bool(routing_key),
+        'routing_key_masked': f"{routing_key[:8]}...{routing_key[-4:]}" if routing_key and len(
+            routing_key) > 12 else None,
+        'routing_source': source,
+        'is_enabled': manager.is_enabled,
+    }
