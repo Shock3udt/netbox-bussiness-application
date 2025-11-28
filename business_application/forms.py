@@ -7,7 +7,8 @@ Updated with PagerDuty routing key support (sensitive field).
 from django import forms
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, PagerDutyTemplateTypeChoices
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, PagerDutyTemplateTypeChoices,
+    ExternalWorkflow, ExternalWorkflowType
 )
 
 
@@ -221,6 +222,33 @@ class TechnicalServicePagerDutyForm(forms.ModelForm):
         return new_value if new_value else None
 
 
+class TechnicalServiceAssignDevicesForm(forms.ModelForm):
+    """
+    Form for assigning existing devices to a TechnicalService.
+    """
+    class Meta:
+        model = TechnicalService
+        fields = ['devices']
+
+
+class TechnicalServiceAssignVMsForm(forms.ModelForm):
+    """
+    Form for assigning existing virtual machines to a TechnicalService.
+    """
+    class Meta:
+        model = TechnicalService
+        fields = ['vms']
+
+
+class TechnicalServiceAssignClustersForm(forms.ModelForm):
+    """
+    Form for assigning existing clusters to a TechnicalService.
+    """
+    class Meta:
+        model = TechnicalService
+        fields = ['clusters']
+
+
 class ServiceDependencyForm(forms.ModelForm):
     """
     Form for creating and editing ServiceDependency objects.
@@ -386,3 +414,68 @@ class IncidentForm(forms.ModelForm):
                 pass
 
         return incident
+
+class ExternalWorkflowForm(forms.ModelForm):
+    """
+    Form for creating and editing ExternalWorkflow objects.
+    """
+    attribute_mapping = forms.JSONField(
+        required=False,
+        help_text='JSON mapping of object attributes to workflow parameters',
+        widget=forms.Textarea(attrs={
+            'rows': 10,
+            'placeholder': '''{
+  "extra_vars": {
+    "device_name": "object.name",
+    "device_ip": "object.primary_ip4.address",
+    "severity": "object.severity"
+  },
+  "limit": "object.name"
+}'''
+        })
+    )
+
+    class Meta:
+        model = ExternalWorkflow
+        fields = [
+            'name',
+            'description',
+            'workflow_type',
+            'enabled',
+            'object_type',
+            'aap_url',
+            'aap_resource_type',
+            'aap_resource_id',
+            'n8n_webhook_url',
+            'attribute_mapping',
+        ]
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Add help text for conditional fields
+        self.fields['aap_url'].widget.attrs['placeholder'] = 'https://aap.example.com'
+        self.fields['n8n_webhook_url'].widget.attrs['placeholder'] = 'https://n8n.example.com/webhook/abc123'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        workflow_type = cleaned_data.get('workflow_type')
+
+        # Validate AAP-specific fields
+        if workflow_type == ExternalWorkflowType.AAP:
+            if not cleaned_data.get('aap_url'):
+                self.add_error('aap_url', 'AAP URL is required for AAP workflow type')
+            if not cleaned_data.get('aap_resource_type'):
+                self.add_error('aap_resource_type', 'AAP resource type is required for AAP workflow type')
+            if not cleaned_data.get('aap_resource_id'):
+                self.add_error('aap_resource_id', 'AAP resource ID is required for AAP workflow type')
+
+        # Validate N8N-specific fields
+        elif workflow_type == ExternalWorkflowType.N8N:
+            if not cleaned_data.get('n8n_webhook_url'):
+                self.add_error('n8n_webhook_url', 'N8N webhook URL is required for N8N workflow type')
+
+        return cleaned_data

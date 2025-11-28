@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow,
+    WorkflowExecution
 )
 from dcim.models import Device
 from virtualization.models import VirtualMachine
@@ -498,6 +499,84 @@ class PagerDutyTemplateSerializer(serializers.ModelSerializer):
             'services_using_template',
             'created',
             'last_updated',
+        ]
+
+
+class ExternalWorkflowSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the ExternalWorkflow model.
+    """
+    workflow_url = serializers.ReadOnlyField()
+    workflow_identifier = serializers.ReadOnlyField()
+    workflow_type_display = serializers.CharField(source='get_workflow_type_display', read_only=True)
+    object_type_display = serializers.CharField(source='get_object_type_display', read_only=True)
+    aap_resource_type_display = serializers.CharField(source='get_aap_resource_type_display', read_only=True)
+
+    class Meta:
+        model = ExternalWorkflow
+        fields = [
+            'id',
+            'name',
+            'description',
+            'workflow_type',
+            'workflow_type_display',
+            'enabled',
+            'object_type',
+            'object_type_display',
+            'aap_url',
+            'aap_resource_type',
+            'aap_resource_type_display',
+            'aap_resource_id',
+            'n8n_webhook_url',
+            'attribute_mapping',
+            'workflow_url',
+            'workflow_identifier',
+            'created',
+            'last_updated',
+        ]
+
+
+class WorkflowExecutionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the WorkflowExecution model.
+    """
+    workflow_name = serializers.CharField(source='workflow.name', read_only=True)
+    workflow_type = serializers.CharField(source='workflow.workflow_type', read_only=True)
+    user_username = serializers.CharField(source='user.username', read_only=True)
+    content_type_name = serializers.CharField(source='content_type.model', read_only=True)
+    source_object_display = serializers.ReadOnlyField()
+    duration = serializers.ReadOnlyField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = WorkflowExecution
+        fields = [
+            'id',
+            'workflow',
+            'workflow_name',
+            'workflow_type',
+            'user',
+            'user_username',
+            'content_type',
+            'content_type_name',
+            'object_id',
+            'source_object_display',
+            'status',
+            'status_display',
+            'started_at',
+            'completed_at',
+            'duration',
+            'parameters_sent',
+            'execution_id',
+            'response_data',
+            'error_message',
+            'created',
+            'last_updated',
+        ]
+        read_only_fields = [
+            'workflow', 'user', 'content_type', 'object_id', 'status',
+            'started_at', 'completed_at', 'parameters_sent', 'execution_id',
+            'response_data', 'error_message'
         ]
 
 

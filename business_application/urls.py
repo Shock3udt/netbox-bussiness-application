@@ -3,7 +3,7 @@ from utilities.urls import get_model_urls
 from netbox.views import generic
 
 from . import views
-from .models import PagerDutyTemplate, BusinessApplication, TechnicalService, ServiceDependency
+from .models import PagerDutyTemplate, BusinessApplication, TechnicalService, ServiceDependency, ExternalWorkflow
 
 app_name = 'business_application'
 
@@ -31,6 +31,9 @@ urlpatterns = [
     path('technical-service/<int:pk>/dependencies/api/', views.dependency_graph_api, name='technicalservice_dependencies_api'),
     path('technical-service/<int:pk>/pagerduty/', views.TechnicalServicePagerDutyView.as_view(), name='technicalservice_pagerduty'),
     path('technical-service/<int:pk>/pagerduty/edit/', views.TechnicalServicePagerDutyEditView.as_view(), name='technicalservice_pagerduty_edit'),
+    path('technical-service/<int:pk>/assign-devices/', views.TechnicalServiceAssignDevicesView.as_view(), name='technicalservice_assign_devices'),
+    path('technical-service/<int:pk>/assign-vms/', views.TechnicalServiceAssignVMsView.as_view(), name='technicalservice_assign_vms'),
+    path('technical-service/<int:pk>/assign-clusters/', views.TechnicalServiceAssignClustersView.as_view(), name='technicalservice_assign_clusters'),
     path('technical-service/<int:pk>/', include(get_model_urls('business_application', 'technicalservice'))),
 
     # PagerDuty Template URLs
@@ -42,6 +45,16 @@ urlpatterns = [
     path('pagerduty-template/<int:pk>/changelog/', generic.ObjectChangeLogView.as_view(), name='pagerdutytemplate_changelog', kwargs={'model': PagerDutyTemplate}),
     path('pagerduty-template/<int:pk>/journal/', generic.ObjectJournalView.as_view(), name='pagerdutytemplate_journal', kwargs={'model': PagerDutyTemplate}),
     path('pagerduty-template/<int:pk>/', include(get_model_urls('business_application', 'pagerdutytemplate'))),
+
+    # External Workflow URLs
+    path('external-workflow/', views.ExternalWorkflowListView.as_view(), name='externalworkflow_list'),
+    path('external-workflow/<int:pk>/', views.ExternalWorkflowDetailView.as_view(), name='externalworkflow_detail'),
+    path('external-workflow/add/', views.ExternalWorkflowCreateView.as_view(), name='externalworkflow_add'),
+    path('external-workflow/<int:pk>/edit/', views.ExternalWorkflowEditView.as_view(), name='externalworkflow_edit'),
+    path('external-workflow/<int:pk>/delete/', views.ExternalWorkflowDeleteView.as_view(), name='externalworkflow_delete'),
+    path('external-workflow/<int:pk>/changelog/', generic.ObjectChangeLogView.as_view(), name='externalworkflow_changelog', kwargs={'model': ExternalWorkflow}),
+    path('external-workflow/<int:pk>/journal/', generic.ObjectJournalView.as_view(), name='externalworkflow_journal', kwargs={'model': ExternalWorkflow}),
+    path('external-workflow/<int:pk>/', include(get_model_urls('business_application', 'externalworkflow'))),
 
     # Service Dependency URLs
     path('service-dependency/', views.ServiceDependencyListView.as_view(), name='servicedependency_list'),

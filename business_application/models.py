@@ -718,6 +718,41 @@ class IncidentSeverity(ChoiceSet):
         (LOW, 'Low', 'green'),
     ]
 
+
+class ExternalWorkflowType(ChoiceSet):
+    """Type choices for external workflow platforms"""
+    AAP = 'aap'
+    N8N = 'n8n'
+
+    CHOICES = [
+        (AAP, 'Ansible Automation Platform', 'blue'),
+        (N8N, 'N8N', 'green'),
+    ]
+
+
+class AAPResourceType(ChoiceSet):
+    """Type choices for AAP resources (workflow vs job template)"""
+    WORKFLOW = 'workflow'
+    JOB_TEMPLATE = 'job_template'
+
+    CHOICES = [
+        (WORKFLOW, 'Workflow Template'),
+        (JOB_TEMPLATE, 'Job Template'),
+    ]
+
+
+class ExternalWorkflowObjectType(ChoiceSet):
+    """Object types that can trigger external workflows"""
+    DEVICE = 'device'
+    INCIDENT = 'incident'
+    EVENT = 'event'
+
+    CHOICES = [
+        (DEVICE, 'Device', 'blue'),
+        (INCIDENT, 'Incident', 'red'),
+        (EVENT, 'Event', 'orange'),
+    ]
+
 class Incident(NetBoxModel):
     title           = models.CharField(max_length=255)
     description     = models.TextField(blank=True)
@@ -772,3 +807,300 @@ class Incident(NetBoxModel):
 
     def __str__(self):
         return self.title
+
+
+class ExternalWorkflow(NetBoxModel):
+    """
+    A model representing an external workflow integration (AAP or N8N).
+    Used to trigger automated workflows based on NetBox objects like Devices, Incidents, or Events.
+    """
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text='Unique name for this workflow configuration'
+    )
+    description = models.TextField(
+        blank=True,
+        help_text='Description of what this workflow does'
+    )
+    workflow_type = models.CharField(
+        max_length=20,
+        choices=ExternalWorkflowType,
+        help_text='External workflow platform type'
+    )
+    enabled = models.BooleanField(
+        default=True,
+        help_text='Whether this workflow is enabled for execution'
+    )
+
+    # AAP-specific fields
+    aap_url = models.URLField(
+        blank=True,
+        null=True,
+        help_text='AAP Controller URL (e.g., https://aap.example.com)'
+    )
+    aap_resource_type = models.CharField(
+        max_length=20,
+        choices=AAPResourceType,
+        blank=True,
+        null=True,
+        help_text='AAP resource type (Workflow Template or Job Template)'
+    )
+    aap_resource_id = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        help_text='AAP Workflow or Job Template ID'
+    )
+
+    # N8N-specific fields
+    n8n_webhook_url = models.URLField(
+        blank=True,
+        null=True,
+        help_text='N8N Webhook URL for triggering the workflow'
+    )
+
+    # Associated object type
+    object_type = models.CharField(
+        max_length=20,
+        choices=ExternalWorkflowObjectType,
+        help_text='Type of object that triggers this workflow'
+    )
+
+    # Attribute mapping for workflow parameters
+    # For AAP: Maps object attributes to extra_vars or limit parameters
+    # For N8N: Maps object attributes to webhook payload fields
+    attribute_mapping = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='''JSON mapping of object attributes to workflow parameters.
+        For AAP: {"extra_vars": {"var_name": "object.field"}, "limit": "object.name"}
+        For N8N: {"field_name": "object.field", "another_field": "object.other_field"}'''
+    )
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'External Workflow'
+        verbose_name_plural = 'External Workflows'
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:externalworkflow_detail', args=[self.pk])
+
+    def clean(self):
+        """Custom validation for the model"""
+        from django.core.exceptions import ValidationError
+        super().clean()
+
+        errors = {}
+
+        # Validate AAP-specific fields
+        if self.workflow_type == ExternalWorkflowType.AAP:
+            if not self.aap_url:
+                errors['aap_url'] = 'AAP URL is required for AAP workflow type'
+            if not self.aap_resource_type:
+                errors['aap_resource_type'] = 'AAP resource type is required for AAP workflow type'
+            if not self.aap_resource_id:
+                errors['aap_resource_id'] = 'AAP resource ID is required for AAP workflow type'
+
+        # Validate N8N-specific fields
+        elif self.workflow_type == ExternalWorkflowType.N8N:
+            if not self.n8n_webhook_url:
+                errors['n8n_webhook_url'] = 'N8N webhook URL is required for N8N workflow type'
+
+        # Validate attribute_mapping structure
+        if self.attribute_mapping:
+            if not isinstance(self.attribute_mapping, dict):
+                errors['attribute_mapping'] = 'Attribute mapping must be a JSON object'
+
+        if errors:
+            raise ValidationError(errors)
+
+    @property
+    def workflow_url(self):
+        """Return the appropriate URL based on workflow type"""
+        if self.workflow_type == ExternalWorkflowType.AAP:
+            return self.aap_url
+        elif self.workflow_type == ExternalWorkflowType.N8N:
+            return self.n8n_webhook_url
+        return None
+
+    @property
+    def workflow_identifier(self):
+        """Return the workflow identifier based on type"""
+        if self.workflow_type == ExternalWorkflowType.AAP:
+            return f"{self.aap_resource_type}:{self.aap_resource_id}"
+        elif self.workflow_type == ExternalWorkflowType.N8N:
+            return self.n8n_webhook_url
+        return None
+
+    def get_mapped_parameters(self, obj):
+        """
+        Generate parameters for workflow execution based on attribute mapping.
+
+        Args:
+            obj: The source object (Device, Incident, or Event)
+
+        Returns:
+            dict: Parameters ready for workflow execution
+        """
+        if not self.attribute_mapping:
+            return {}
+
+        def resolve_attribute(obj, path):
+            """Resolve a dotted attribute path on an object"""
+            parts = path.split('.')
+            value = obj
+            for part in parts:
+                if hasattr(value, part):
+                    value = getattr(value, part)
+                    # Handle callable attributes (like methods)
+                    if callable(value):
+                        value = value()
+                elif isinstance(value, dict) and part in value:
+                    value = value[part]
+                else:
+                    return None
+            return value
+
+        result = {}
+        for key, mapping in self.attribute_mapping.items():
+            if isinstance(mapping, str):
+                # Direct attribute mapping
+                if mapping.startswith('object.'):
+                    attr_path = mapping[7:]  # Remove 'object.' prefix
+                    result[key] = resolve_attribute(obj, attr_path)
+                else:
+                    result[key] = mapping
+            elif isinstance(mapping, dict):
+                # Nested mapping (e.g., for AAP extra_vars)
+                result[key] = {}
+                for sub_key, sub_mapping in mapping.items():
+                    if isinstance(sub_mapping, str) and sub_mapping.startswith('object.'):
+                        attr_path = sub_mapping[7:]
+                        result[key][sub_key] = resolve_attribute(obj, attr_path)
+                    else:
+                        result[key][sub_key] = sub_mapping
+            else:
+                result[key] = mapping
+
+        return result
+
+    def __str__(self):
+        return f"{self.name} ({self.get_workflow_type_display()})"
+
+
+class WorkflowExecutionStatus(ChoiceSet):
+    """Status choices for workflow executions"""
+    PENDING = 'pending'
+    RUNNING = 'running'
+    SUCCESS = 'success'
+    FAILED = 'failed'
+    CANCELLED = 'cancelled'
+
+    CHOICES = [
+        (PENDING, 'Pending', 'gray'),
+        (RUNNING, 'Running', 'blue'),
+        (SUCCESS, 'Success', 'green'),
+        (FAILED, 'Failed', 'red'),
+        (CANCELLED, 'Cancelled', 'orange'),
+    ]
+
+
+class WorkflowExecution(NetBoxModel):
+    """
+    A model representing the execution log of an external workflow.
+    Records who executed what workflow, when, and the result.
+    """
+    workflow = models.ForeignKey(
+        ExternalWorkflow,
+        on_delete=models.CASCADE,
+        related_name='executions',
+        help_text='The workflow that was executed'
+    )
+    
+    # Who triggered the execution
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='workflow_executions',
+        help_text='User who triggered the execution'
+    )
+    
+    # What object triggered it (polymorphic)
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        help_text='Type of the source object'
+    )
+    object_id = models.PositiveIntegerField(
+        help_text='ID of the source object'
+    )
+    source_object = GenericForeignKey('content_type', 'object_id')
+    
+    # Execution details
+    status = models.CharField(
+        max_length=20,
+        choices=WorkflowExecutionStatus,
+        default=WorkflowExecutionStatus.PENDING,
+        help_text='Current status of the execution'
+    )
+    
+    # Timestamps
+    started_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text='When the execution was started'
+    )
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the execution completed'
+    )
+    
+    # Request/Response data
+    parameters_sent = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Parameters sent to the workflow'
+    )
+    execution_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text='External execution ID (AAP job ID, etc.)'
+    )
+    response_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Response received from the workflow platform'
+    )
+    error_message = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Error message if execution failed'
+    )
+
+    class Meta:
+        ordering = ['-started_at']
+        verbose_name = 'Workflow Execution'
+        verbose_name_plural = 'Workflow Executions'
+
+    def get_absolute_url(self):
+        return reverse('plugins:business_application:workflowexecution_detail', args=[self.pk])
+
+    @property
+    def duration(self):
+        """Calculate execution duration in seconds"""
+        if self.completed_at and self.started_at:
+            return (self.completed_at - self.started_at).total_seconds()
+        return None
+
+    @property
+    def source_object_display(self):
+        """Get display string for the source object"""
+        if self.source_object:
+            return str(self.source_object)
+        return f"{self.content_type.model} (ID: {self.object_id})"
+
+    def __str__(self):
+        return f"{self.workflow.name} - {self.started_at.strftime('%Y-%m-%d %H:%M:%S')} ({self.status})"
