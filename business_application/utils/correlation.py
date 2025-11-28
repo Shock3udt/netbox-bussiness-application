@@ -236,7 +236,7 @@ class AlertCorrelationEngine:
         visited = set()
         
         def traverse_cables(device: Device, depth: int = 0):
-            if device.id in visited or depth > 3:  # Prevent infinite loops and limit depth
+            if device.id in visited or depth > 5:  # Prevent infinite loops and limit depth
                 return
             visited.add(device.id)
             
@@ -249,13 +249,25 @@ class AlertCorrelationEngine:
                     if hasattr(interface, 'cable') and interface.cable:
                         cable = interface.cable
                         
+                        print(type(cable.a_terminations))
+                        print(type(cable.b_terminations))
+                        print(cable.a_terminations.all())
+                        print(cable.b_terminations.all())
+                        
+                        # a_terminations and b_terminations are lists, not QuerySets
+                        # Check if this interface is on the A side by comparing object IDs
+                        a_termination_ids = [t.id for t in cable.a_terminations]
+                        is_a_side = interface.id in a_termination_ids
+                        
                         # Get the other end of the cable
-                        if cable.a_terminations.filter(object_id=interface.id).exists():
+                        if is_a_side:
                             # This interface is on A side, get B side
-                            other_terminations = cable.b_terminations.all()
+                            # A side = upstream, B side = downstream
+                            other_terminations = cable.b_terminations
                         else:
-                            # This interface is on B side, get A side  
-                            other_terminations = cable.a_terminations.all()
+                            # This interface is on B side, so it is a downstream device or peer
+                            # We're following the downstream devices only
+                            other_terminations = []
                         
                         for termination in other_terminations:
                             # Get the device from the termination
