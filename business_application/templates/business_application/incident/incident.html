@@ -84,7 +84,7 @@
         <div class="card">
             <h5 class="card-header">
                 Responders
-                <span class="badge bg-secondary ms-2">{{ object.responders.count }}</span>
+                <span class="badge bg-light text-dark ms-2">{{ object.responders.count }}</span>
             </h5>
             <div class="card-body">
                 {% if object.responders.exists %}
@@ -107,7 +107,7 @@
         <div class="card">
             <h5 class="card-header">
                 Affected Services
-                <span class="badge bg-secondary ms-2">{{ object.affected_services.count }}</span>
+                <span class="badge bg-light text-dark ms-2">{{ object.affected_services.count }}</span>
             </h5>
             <div class="card-body">
                 {% if object.affected_services.exists %}
@@ -133,7 +133,7 @@
         <div class="card">
             <h5 class="card-header">
                 Related Events
-                <span class="badge bg-secondary ms-2">{{ object.events.count }}</span>
+                <span class="badge bg-light text-dark ms-2">{{ object.events.count }}</span>
             </h5>
             <div class="card-body">
                 {% if object.events.exists %}

@@ -1035,7 +1035,7 @@ class AlertIngestionViewSet(ViewSet):
             },
             "raw_data": self._clean_raw_data(email_data)
         }
-        
+
     def _transform_gitlab_merge_request(self, gitlab_data):
         """
         Transform GitLab merge request webhook format to standard format.
@@ -1044,12 +1044,12 @@ class AlertIngestionViewSet(ViewSet):
         project = gitlab_data.get('project', {})
         user = gitlab_data.get('user', {})
         assignees = gitlab_data.get('assignees', [])
-        
+
         # Map GitLab merge request action and state to event status and severity
         mr_action = object_attributes.get('action', 'unknown')
         mr_state = object_attributes.get('state', 'unknown')
         event_status, event_severity = self._map_gitlab_merge_request_status(mr_action, mr_state)
-        
+
         # Generate comprehensive message with merge request information
         mr_iid = object_attributes.get('iid', 'unknown')
         mr_title = object_attributes.get('title', 'No title')
@@ -1057,25 +1057,25 @@ class AlertIngestionViewSet(ViewSet):
         author_name = user.get('name', 'Unknown')
         source_branch = object_attributes.get('source_branch', 'unknown')
         target_branch = object_attributes.get('target_branch', 'unknown')
-        
+
         # Build detailed message
         message = f"GitLab MR !{mr_iid} {mr_action} in {project_path}: {mr_title}"
         if source_branch and target_branch:
             message += f" ({source_branch} → {target_branch})"
         if author_name and author_name != 'Unknown':
             message += f" by {author_name}"
-            
+
         # Add assignee information if available
         if assignees:
             assignee_names = [assignee.get('name', 'Unknown') for assignee in assignees]
             message += f" - Assigned to: {', '.join(assignee_names)}"
-        
+
         # Create timestamp from merge request data
         timestamp = self._parse_gitlab_timestamp(
-            object_attributes.get('created_at') or 
+            object_attributes.get('created_at') or
             object_attributes.get('updated_at')
         )
-        
+
         return {
             "source": "gitlab",
             "timestamp": timestamp,
@@ -1145,12 +1145,12 @@ class AlertIngestionViewSet(ViewSet):
     def _map_severity_to_criticality(self, severity):
         """Map severity levels to Event criticallity choices (note the typo in field name)."""
         mapping = {
-            'critical': 'CRITICAL',
-            'high': 'HIGH',
-            'medium': 'MEDIUM',
-            'low': 'LOW'
+            'critical': 'critical',
+            'high': 'high',
+            'medium': 'medium',
+            'low': 'low'
         }
-        return mapping.get(severity.lower(), 'MEDIUM')
+        return mapping.get(severity.lower(), 'medium')
 
     def _map_capacitor_severity(self, priority):
         """Map Capacitor priority (1-5) to standard severity."""
@@ -1193,7 +1193,7 @@ class AlertIngestionViewSet(ViewSet):
         Map GitLab merge request action and state to event status and severity.
         Returns tuple of (event_status, event_severity).
         """
-        
+
         # Priority mapping: action takes precedence over state for determining severity
         action_mapping = {
             'open': ('triggered', 'low'),
@@ -1206,7 +1206,7 @@ class AlertIngestionViewSet(ViewSet):
             'approval': ('ok', 'low'),
             'unapproval': ('triggered', 'medium'),
         }
-        
+
         # State-based mapping as fallback
         state_mapping = {
             'opened': ('triggered', 'low'),
@@ -1214,7 +1214,7 @@ class AlertIngestionViewSet(ViewSet):
             'merged': ('ok', 'low'),
             'locked': ('suppressed', 'low'),
         }
-        
+
         # Check action first, then state, then default
         if mr_action in action_mapping:
             return action_mapping[mr_action]
@@ -1231,7 +1231,7 @@ class AlertIngestionViewSet(ViewSet):
         """
         if not timestamp_str:
             return timezone.now()
-            
+
         try:
             # GitLab timestamps are typically in ISO format with Z suffix
             # Example: "2025-11-27T08:32:43.809Z"
@@ -1242,14 +1242,14 @@ class AlertIngestionViewSet(ViewSet):
                 # Handle common GitLab timestamp format: 2025-11-27T08:32:43.809Z
                 timestamp_str = timestamp_str.replace('Z', '+00:00')
                 parsed_dt = datetime.fromisoformat(timestamp_str)
-            
+
             # Ensure timezone awareness
             if parsed_dt.tzinfo is None:
                 # Assume UTC if no timezone info - use Django's timezone.now() timezone
                 parsed_dt = timezone.make_aware(parsed_dt, timezone.get_current_timezone())
-            
+
             return parsed_dt
-            
+
         except (ValueError, TypeError) as e:
             logger.warning(f"Failed to parse GitLab timestamp '{timestamp_str}': {e}")
             return timezone.now()

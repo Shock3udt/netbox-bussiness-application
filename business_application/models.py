@@ -508,12 +508,14 @@ class EventStatus(ChoiceSet):
 
 class EventCrit(ChoiceSet):
     CRITICAL = 'critical'
-    WARNING  = 'warning'
-    INFO     = 'info'
+    HIGH     = 'high'
+    MEDIUM   = 'medium'
+    LOW      = 'low'
     CHOICES = [
         (CRITICAL, 'Critical', 'red'),
-        (WARNING, 'Warning', 'orange'),
-        (INFO, 'Info', 'blue'),
+        (HIGH, 'High', 'orange'),
+        (MEDIUM, 'Medium', 'yellow'),
+        (LOW, 'Low', 'green'),
     ]
 
 class EventSource(NetBoxModel):        # reference catalog
@@ -722,7 +724,7 @@ class Incident(NetBoxModel):
         from django.db.models import Q
 
         events_query = Event.objects.exclude(
-            criticallity__in=[EventCrit.CRITICAL, EventCrit.WARNING]
+            criticallity__in=[EventCrit.CRITICAL, EventCrit.HIGH]
             #ideally we would exclude events that are already assigned to an incident
         ).filter(
             Q(content_type=device_ct, object_id__in=device_ids) |
