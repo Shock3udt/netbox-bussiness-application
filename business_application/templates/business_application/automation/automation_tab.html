@@ -283,9 +283,20 @@
 {% block javascript %}
 {{ block.super }}
 
+<!-- CSRF Token from Django template -->
+{% csrf_token %}
+
 <script>
-// Get CSRF token from cookie (Django/NetBox standard way)
-function getCookie(name) {
+// Get CSRF token - try multiple sources
+function getCSRFToken() {
+    // First try to get from the hidden input that {% csrf_token %} creates
+    const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (csrfInput) {
+        return csrfInput.value;
+    }
+    
+    // Then try from cookie
+    const name = 'csrftoken';
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
         const cookies = document.cookie.split(';');
@@ -300,7 +311,8 @@ function getCookie(name) {
     return cookieValue;
 }
 
-const csrfToken = getCookie('csrftoken');
+const csrfToken = getCSRFToken();
+console.log('CSRF Token found:', csrfToken ? 'yes (' + csrfToken.substring(0, 10) + '...)' : 'NO');
 
 // Pretty print parameters on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -402,11 +414,20 @@ function executeWorkflow(button) {
     console.log('CSRF Token:', csrfToken ? 'present' : 'missing');
     
     // Make API call to execute workflow
+    const headers = {
+        'Content-Type': 'application/json',
+    };
+    
+    // Add CSRF token if available
+    if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+    } else {
+        console.error('CSRF token not found! Request will likely fail.');
+    }
+    
     fetch(apiUrl, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
+        headers: headers,
         credentials: 'same-origin',
         body: JSON.stringify({
             object_type: objectType,
