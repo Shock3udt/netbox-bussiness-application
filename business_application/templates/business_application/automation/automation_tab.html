@@ -261,7 +261,7 @@
                 <h5 class="modal-title" id="executionResultModalLabel">
                     <i class="mdi mdi-robot"></i> Workflow Execution
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" aria-label="Close" onclick="closeExecutionModal()"></button>
             </div>
             <div class="modal-body" id="executionResultBody">
                 <div class="text-center">
@@ -272,7 +272,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" onclick="closeExecutionModal()">Close</button>
             </div>
         </div>
     </div>
@@ -313,6 +313,44 @@ function getCSRFToken() {
 
 const csrfToken = getCSRFToken();
 console.log('CSRF Token found:', csrfToken ? 'yes (' + csrfToken.substring(0, 10) + '...)' : 'NO');
+
+// Store modal instance globally
+let executionModal = null;
+
+function closeExecutionModal() {
+    const modalElement = document.getElementById('executionResultModal');
+    
+    // Try Bootstrap's modal API first
+    if (executionModal) {
+        try {
+            executionModal.hide();
+            return;
+        } catch (e) {
+            console.debug('Bootstrap modal hide failed:', e);
+        }
+    }
+    
+    // Try getting instance from Bootstrap
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        const instance = bootstrap.Modal.getInstance(modalElement);
+        if (instance) {
+            instance.hide();
+            return;
+        }
+    }
+    
+    // Manual fallback
+    modalElement.classList.remove('show');
+    modalElement.style.display = 'none';
+    modalElement.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+    
+    // Remove backdrop
+    const backdrop = document.querySelector('.modal-backdrop');
+    if (backdrop) {
+        backdrop.remove();
+    }
+}
 
 // Pretty print parameters on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -376,11 +414,10 @@ function executeWorkflow(button) {
     console.log('Executing workflow:', workflowId, 'for', objectType, objectId);
     
     // Get or create modal
-    let modalElement = document.getElementById('executionResultModal');
-    let modal;
+    const modalElement = document.getElementById('executionResultModal');
     
     if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-        modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+        executionModal = bootstrap.Modal.getOrCreateInstance(modalElement);
     }
     
     document.getElementById('executionResultModalLabel').innerHTML = 
@@ -394,13 +431,19 @@ function executeWorkflow(button) {
         </div>
     `;
     
-    if (modal) {
-        modal.show();
+    if (executionModal) {
+        executionModal.show();
     } else {
         // Fallback: manually show modal
         modalElement.classList.add('show');
         modalElement.style.display = 'block';
+        modalElement.setAttribute('aria-hidden', 'false');
         document.body.classList.add('modal-open');
+        
+        // Add backdrop
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop fade show';
+        document.body.appendChild(backdrop);
     }
     
     // Disable button during execution
