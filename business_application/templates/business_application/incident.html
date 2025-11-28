@@ -84,7 +84,7 @@
         <div class="card">
             <h5 class="card-header">
                 Responders
-                <span class="badge bg-info ms-2">{{ object.responders.count }}</span>
+                <span class="badge bg-secondary ms-2">{{ object.responders.count }}</span>
             </h5>
             <div class="card-body">
                 {% if object.responders.exists %}
@@ -107,7 +107,7 @@
         <div class="card">
             <h5 class="card-header">
                 Affected Services
-                <span class="badge bg-info ms-2">{{ object.affected_services.count }}</span>
+                <span class="badge bg-secondary ms-2">{{ object.affected_services.count }}</span>
             </h5>
             <div class="card-body">
                 {% if object.affected_services.exists %}
@@ -133,7 +133,7 @@
         <div class="card">
             <h5 class="card-header">
                 Related Events
-                <span class="badge bg-info ms-2">{{ object.events.count }}</span>
+                <span class="badge bg-secondary ms-2">{{ object.events.count }}</span>
             </h5>
             <div class="card-body">
                 {% if object.events.exists %}
@@ -169,67 +169,6 @@
                     </div>
                 {% else %}
                     <p class="text-muted">No related events</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-
-
-<div class="row mt-3">
-    <div class="col-md-12">
-        <div class="card">
-            <h5 class="card-header">
-                Other Events (Context)
-                <span class="badge bg-info ms-2">{{ context_events.count }}</span>
-                <small class="text-muted ms-2">Lower priority events from affected devices</small>
-            </h5>
-            <div class="card-body">
-                {% if context_events %}
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Message</th>
-                                    <th>Status</th>
-                                    <th>Criticality</th>
-                                    <th>Target</th>
-                                    <th>Last Seen</th>
-                                    <th>Source</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for event in context_events %}
-                                <tr>
-                                    <td><a href="{{ event.get_absolute_url }}">{{ event.message|truncatechars:50 }}</a></td>
-                                    <td>{{ event.status|event_status_badge }}</td>
-                                    <td>{{ event.criticallity|event_criticality_badge }}</td>
-                                    <td>
-                                        {% if event.has_valid_target %}
-                                            {{ event.target_display }}
-                                        {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ event.last_seen_at|date:"Y-m-d H:i" }}</td>
-                                    <td>
-                                        {% if event.event_source %}
-                                            <a href="{{ event.event_source.get_absolute_url }}">{{ event.event_source.name }}</a>
-                                        {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <p class="text-muted small mt-2">
-                        <i class="mdi mdi-information"></i>
-                        These events are from the same devices/services but are not assigned to this incident due to their lower priority (info/warning level).
-                    </p>
-                {% else %}
-                    <p class="text-muted">No context events found from affected devices</p>
                 {% endif %}
             </div>
         </div>
