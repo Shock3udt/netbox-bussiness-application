@@ -251,8 +251,8 @@ class AlertCorrelationEngine:
                         
                         print(type(cable.a_terminations))
                         print(type(cable.b_terminations))
-                        print(cable.a_terminations.all())
-                        print(cable.b_terminations.all())
+                        print(cable.a_terminations)
+                        print(cable.b_terminations)
                         
                         # a_terminations and b_terminations are lists, not QuerySets
                         # Check if this interface is on the A side by comparing object IDs
