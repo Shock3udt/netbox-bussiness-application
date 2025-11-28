@@ -1,15 +1,44 @@
-from pydoc import text
+# business_application/forms.py
+"""
+Forms for Business Application plugin.
+Updated with PagerDuty routing key support (sensitive field).
+"""
+
 from django import forms
-import json
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, PagerDutyTemplateTypeChoices
 )
 
+
+class SensitiveCharField(forms.CharField):
+    """
+    A CharField that renders as a password input for sensitive values.
+    Shows placeholder text if a value already exists.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('widget', forms.PasswordInput(attrs={
+            'class': 'form-control',
+            'autocomplete': 'off',
+            'placeholder': '••••••••••••••••'
+        }))
+        kwargs.setdefault('required', False)
+        super().__init__(*args, **kwargs)
+
+
 class BusinessApplicationForm(forms.ModelForm):
     """
     Form for creating and editing BusinessApplication objects.
     """
+    pagerduty_routing_key = SensitiveCharField(
+        label='PagerDuty Routing Key',
+        help_text='PagerDuty Events API v2 routing key (integration key). '
+                  'Leave empty to clear, or enter new value to update. '
+                  'Used as fallback if no TechnicalService has a routing key.',
+        required=False,
+    )
+
     class Meta:
         model = BusinessApplication
         fields = [
@@ -20,13 +49,41 @@ class BusinessApplicationForm(forms.ModelForm):
             'delegate',
             'servicenow',
             'virtual_machines',
-            'devices'
+            'devices',
+            'pagerduty_routing_key',
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # If editing existing object with routing key, show placeholder
+        if self.instance and self.instance.pk and self.instance.pagerduty_routing_key:
+            self.fields['pagerduty_routing_key'].widget.attrs[
+                'placeholder'] = '••••••• (value set - enter new value to change)'
+            self.fields['pagerduty_routing_key'].help_text += ' Current value is hidden for security.'
+
+    def clean_pagerduty_routing_key(self):
+        """Handle the sensitive routing key field."""
+        new_value = self.cleaned_data.get('pagerduty_routing_key')
+
+        # If empty and we're editing, keep the old value
+        if not new_value and self.instance and self.instance.pk:
+            return self.instance.pagerduty_routing_key
+
+        return new_value if new_value else None
+
 
 class TechnicalServiceForm(forms.ModelForm):
     """
     Form for creating and editing TechnicalService objects.
     """
+    pagerduty_routing_key = SensitiveCharField(
+        label='PagerDuty Routing Key',
+        help_text='PagerDuty Events API v2 routing key (integration key). '
+                  'Leave empty to clear, or enter new value to update. '
+                  'If not set, will search upstream (parent) services for a routing key.',
+        required=False,
+    )
+
     class Meta:
         model = TechnicalService
         fields = [
@@ -34,7 +91,8 @@ class TechnicalServiceForm(forms.ModelForm):
             'service_type',
             'business_apps',
             'pagerduty_service_definition',
-            'pagerduty_router_rule'
+            'pagerduty_router_rule',
+            'pagerduty_routing_key',
         ]
 
     def __init__(self, *args, **kwargs):
@@ -47,6 +105,23 @@ class TechnicalServiceForm(forms.ModelForm):
         self.fields['pagerduty_router_rule'].queryset = PagerDutyTemplate.objects.filter(
             template_type=PagerDutyTemplateTypeChoices.ROUTER_RULE,
         )
+
+        # If editing existing object with routing key, show placeholder
+        if self.instance and self.instance.pk and self.instance.pagerduty_routing_key:
+            self.fields['pagerduty_routing_key'].widget.attrs[
+                'placeholder'] = '••••••• (value set - enter new value to change)'
+            self.fields['pagerduty_routing_key'].help_text += ' Current value is hidden for security.'
+
+    def clean_pagerduty_routing_key(self):
+        """Handle the sensitive routing key field."""
+        new_value = self.cleaned_data.get('pagerduty_routing_key')
+
+        # If empty and we're editing, keep the old value
+        if not new_value and self.instance and self.instance.pk:
+            return self.instance.pagerduty_routing_key
+
+        return new_value if new_value else None
+
 
 class PagerDutyTemplateForm(forms.ModelForm):
     """
@@ -106,11 +181,18 @@ class PagerDutyTemplateForm(forms.ModelForm):
 
 class TechnicalServicePagerDutyForm(forms.ModelForm):
     """
-    Form for selecting PagerDuty templates for TechnicalService objects.
+    Form for selecting PagerDuty templates and routing key for TechnicalService objects.
     """
+    pagerduty_routing_key = SensitiveCharField(
+        label='PagerDuty Routing Key',
+        help_text='PagerDuty Events API v2 routing key (integration key). '
+                  'Leave empty to inherit from upstream services or BusinessApplication.',
+        required=False,
+    )
+
     class Meta:
         model = TechnicalService
-        fields = ['pagerduty_service_definition', 'pagerduty_router_rule']
+        fields = ['pagerduty_service_definition', 'pagerduty_router_rule', 'pagerduty_routing_key']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -123,11 +205,27 @@ class TechnicalServicePagerDutyForm(forms.ModelForm):
             template_type=PagerDutyTemplateTypeChoices.ROUTER_RULE,
         )
 
+        # If editing existing object with routing key, show placeholder
+        if self.instance and self.instance.pk and self.instance.pagerduty_routing_key:
+            self.fields['pagerduty_routing_key'].widget.attrs[
+                'placeholder'] = '••••••• (value set - enter new value to change)'
+
+    def clean_pagerduty_routing_key(self):
+        """Handle the sensitive routing key field."""
+        new_value = self.cleaned_data.get('pagerduty_routing_key')
+
+        # If empty and we're editing, keep the old value
+        if not new_value and self.instance and self.instance.pk:
+            return self.instance.pagerduty_routing_key
+
+        return new_value if new_value else None
+
 
 class ServiceDependencyForm(forms.ModelForm):
     """
     Form for creating and editing ServiceDependency objects.
     """
+
     class Meta:
         model = ServiceDependency
         fields = [
@@ -146,10 +244,12 @@ class ServiceDependencyForm(forms.ModelForm):
             "Redundancy: Incident occurs only if ALL upstream services fail."
         )
 
+
 class EventSourceForm(forms.ModelForm):
     """
     Form for creating and editing EventSource objects.
     """
+
     class Meta:
         model = EventSource
         fields = [
@@ -157,10 +257,12 @@ class EventSourceForm(forms.ModelForm):
             'description'
         ]
 
+
 class EventForm(forms.ModelForm):
     """
     Form for creating and editing Event objects.
     """
+
     class Meta:
         model = Event
         fields = [
@@ -175,10 +277,12 @@ class EventForm(forms.ModelForm):
             'raw'
         ]
 
+
 class MaintenanceForm(forms.ModelForm):
     """
     Form for creating and editing Maintenance objects.
     """
+
     class Meta:
         model = Maintenance
         fields = [
@@ -191,10 +295,12 @@ class MaintenanceForm(forms.ModelForm):
             'object_id'
         ]
 
+
 class ChangeTypeForm(forms.ModelForm):
     """
     Form for creating and editing ChangeType objects.
     """
+
     class Meta:
         model = ChangeType
         fields = [
@@ -202,10 +308,12 @@ class ChangeTypeForm(forms.ModelForm):
             'description'
         ]
 
+
 class ChangeForm(forms.ModelForm):
     """
     Form for creating and editing Change objects.
     """
+
     class Meta:
         model = Change
         fields = [
@@ -214,6 +322,7 @@ class ChangeForm(forms.ModelForm):
             'content_type',
             'object_id'
         ]
+
 
 class IncidentForm(forms.ModelForm):
     """
