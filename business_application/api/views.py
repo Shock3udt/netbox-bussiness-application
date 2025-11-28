@@ -7,6 +7,10 @@ from django.utils import timezone
 import json
 import logging
 from datetime import datetime, date
+try:
+    from dateutil import parser as dateutil_parser
+except ImportError:
+    dateutil_parser = None
 
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
@@ -23,8 +27,8 @@ from business_application.api.serializers import (
     CapacitorAlertSerializer,
     SignalFXAlertSerializer,
     EmailAlertSerializer,
-    GitLabPipelineSerializer,
-    PagerDutyTemplateSerializer,
+    GitLabSerializer,
+    PagerDutyTemplateSerializer
     ExternalWorkflowSerializer,
     WorkflowExecutionSerializer
 )
@@ -1270,13 +1274,12 @@ class AlertIngestionViewSet(ViewSet):
         return self._process_standard_alert(standard_payload)
 
     @action(detail=False, methods=['post'], url_path='gitlab')
-    def gitlab_pipeline(self, request):
+    def gitlab_alert(self, request):
         """
-        GitLab pipeline webhook endpoint.
-        Transforms GitLab pipeline events to standard format.
-        Filters out merge request pipelines as requested.
+        GitLab webhook endpoint.
+        Transforms GitLab merge request and pipeline     events to standard format.
         """
-        serializer = GitLabPipelineSerializer(data=request.data)
+        serializer = GitLabSerializer(data=request.data)
 
         if not serializer.is_valid():
             logger.error(f"Invalid GitLab pipeline event: {serializer.errors}")
@@ -1286,20 +1289,23 @@ class AlertIngestionViewSet(ViewSet):
             )
 
         # Filter out merge request pipelines
-        pipeline_source = serializer.validated_data['object_attributes'].get('source')
-        if pipeline_source == 'merge_request_event':
-            logger.info("Ignoring merge request pipeline event")
-            return Response(
-                {
-                    "status": "ignored",
-                    "message": "Merge request pipelines are ignored"
-                },
-                status=status.HTTP_200_OK
+        object_kind = serializer.validated_data['object_kind']
+        if object_kind == 'merge_request':
+            logger.info("Detected merge request pipeline event")
+            standard_payload = self._transform_gitlab_merge_request(
+                serializer.validated_data
             )
-
-        standard_payload = self._transform_gitlab_pipeline(
-            serializer.validated_data
-        )
+        elif object_kind == 'pipeline':
+            logger.info(f"Processing pipeline event: {object_kind}")
+            standard_payload = self._transform_gitlab_pipeline(
+                serializer.validated_data
+            )
+        else:
+            logger.error(f"Invalid GitLab event: {object_kind}")
+            return Response(
+                {"errors": "Invalid GitLab event"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         return self._process_standard_alert(standard_payload)
 
@@ -1539,6 +1545,60 @@ class AlertIngestionViewSet(ViewSet):
             },
             "raw_data": self._clean_raw_data(email_data)
         }
+        
+    def _transform_gitlab_merge_request(self, gitlab_data):
+        """
+        Transform GitLab merge request webhook format to standard format.
+        """
+        object_attributes = gitlab_data.get('object_attributes', {})
+        project = gitlab_data.get('project', {})
+        user = gitlab_data.get('user', {})
+        assignees = gitlab_data.get('assignees', [])
+        
+        # Map GitLab merge request action and state to event status and severity
+        mr_action = object_attributes.get('action', 'unknown')
+        mr_state = object_attributes.get('state', 'unknown')
+        event_status, event_severity = self._map_gitlab_merge_request_status(mr_action, mr_state)
+        
+        # Generate comprehensive message with merge request information
+        mr_iid = object_attributes.get('iid', 'unknown')
+        mr_title = object_attributes.get('title', 'No title')
+        project_path = project.get('path_with_namespace', 'unknown/project')
+        author_name = user.get('name', 'Unknown')
+        source_branch = object_attributes.get('source_branch', 'unknown')
+        target_branch = object_attributes.get('target_branch', 'unknown')
+        
+        # Build detailed message
+        message = f"GitLab MR !{mr_iid} {mr_action} in {project_path}: {mr_title}"
+        if source_branch and target_branch:
+            message += f" ({source_branch} → {target_branch})"
+        if author_name and author_name != 'Unknown':
+            message += f" by {author_name}"
+            
+        # Add assignee information if available
+        if assignees:
+            assignee_names = [assignee.get('name', 'Unknown') for assignee in assignees]
+            message += f" - Assigned to: {', '.join(assignee_names)}"
+        
+        # Create timestamp from merge request data
+        timestamp = self._parse_gitlab_timestamp(
+            object_attributes.get('created_at') or 
+            object_attributes.get('updated_at')
+        )
+        
+        return {
+            "source": "gitlab",
+            "timestamp": timestamp,
+            "severity": event_severity,
+            "status": event_status,
+            "message": message,
+            "dedup_id": f"gitlab-merge-request-{object_attributes.get('id', '')}",
+            "target": {
+                "type": "service",
+                "identifier": f"gitlab: {project_path}"
+            },
+            "raw_data": self._clean_raw_data(gitlab_data)
+        }
 
     def _transform_gitlab_pipeline(self, gitlab_data):
         """
@@ -1637,6 +1697,72 @@ class AlertIngestionViewSet(ViewSet):
 
         # Default for any unknown status
         return status_mapping.get(pipeline_status, ('triggered', 'low'))
+
+    def _map_gitlab_merge_request_status(self, mr_action, mr_state):
+        """
+        Map GitLab merge request action and state to event status and severity.
+        Returns tuple of (event_status, event_severity).
+        """
+        
+        # Priority mapping: action takes precedence over state for determining severity
+        action_mapping = {
+            'open': ('triggered', 'low'),
+            'reopen': ('triggered', 'medium'),
+            'close': ('ok', 'low'),
+            'merge': ('ok', 'low'),
+            'update': ('triggered', 'low'),
+            'approved': ('ok', 'low'),
+            'unapproved': ('triggered', 'medium'),
+            'approval': ('ok', 'low'),
+            'unapproval': ('triggered', 'medium'),
+        }
+        
+        # State-based mapping as fallback
+        state_mapping = {
+            'opened': ('triggered', 'low'),
+            'closed': ('ok', 'low'),
+            'merged': ('ok', 'low'),
+            'locked': ('suppressed', 'low'),
+        }
+        
+        # Check action first, then state, then default
+        if mr_action in action_mapping:
+            return action_mapping[mr_action]
+        elif mr_state in state_mapping:
+            return state_mapping[mr_state]
+        else:
+            # Default for unknown action/state
+            return ('triggered', 'low')
+
+    def _parse_gitlab_timestamp(self, timestamp_str):
+        """
+        Parse GitLab timestamp string to Django timezone-aware datetime.
+        Falls back to current time if parsing fails.
+        """
+        if not timestamp_str:
+            return timezone.now()
+            
+        try:
+            # GitLab timestamps are typically in ISO format with Z suffix
+            # Example: "2025-11-27T08:32:43.809Z"
+            if dateutil_parser:
+                parsed_dt = dateutil_parser.parse(timestamp_str)
+            else:
+                # Fallback to basic datetime parsing if dateutil not available
+                # Handle common GitLab timestamp format: 2025-11-27T08:32:43.809Z
+                timestamp_str = timestamp_str.replace('Z', '+00:00')
+                parsed_dt = datetime.fromisoformat(timestamp_str)
+            
+            # Ensure timezone awareness
+            if parsed_dt.tzinfo is None:
+                # Assume UTC if no timezone info - use Django's timezone.now() timezone
+                parsed_dt = timezone.make_aware(parsed_dt, timezone.get_current_timezone())
+            
+            return parsed_dt
+            
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Failed to parse GitLab timestamp '{timestamp_str}': {e}")
+            return timezone.now()
 
     def _determine_target_type(self, signalfx_data):
         """Determine target type from SignalFX data."""

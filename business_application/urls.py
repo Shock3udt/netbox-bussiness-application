@@ -31,6 +31,9 @@ urlpatterns = [
     path('technical-service/<int:pk>/dependencies/api/', views.dependency_graph_api, name='technicalservice_dependencies_api'),
     path('technical-service/<int:pk>/pagerduty/', views.TechnicalServicePagerDutyView.as_view(), name='technicalservice_pagerduty'),
     path('technical-service/<int:pk>/pagerduty/edit/', views.TechnicalServicePagerDutyEditView.as_view(), name='technicalservice_pagerduty_edit'),
+    path('technical-service/<int:pk>/assign-devices/', views.TechnicalServiceAssignDevicesView.as_view(), name='technicalservice_assign_devices'),
+    path('technical-service/<int:pk>/assign-vms/', views.TechnicalServiceAssignVMsView.as_view(), name='technicalservice_assign_vms'),
+    path('technical-service/<int:pk>/assign-clusters/', views.TechnicalServiceAssignClustersView.as_view(), name='technicalservice_assign_clusters'),
     path('technical-service/<int:pk>/', include(get_model_urls('business_application', 'technicalservice'))),
 
     # PagerDuty Template URLs
