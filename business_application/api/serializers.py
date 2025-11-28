@@ -390,6 +390,7 @@ class IncidentSerializer(serializers.ModelSerializer):
     blast_radius = serializers.SerializerMethodField(read_only=True)
     duration_minutes = serializers.SerializerMethodField(read_only=True)
     auto_created = serializers.SerializerMethodField(read_only=True)
+    recent_context_events = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Incident
@@ -412,6 +413,7 @@ class IncidentSerializer(serializers.ModelSerializer):
             'blast_radius',
             'duration_minutes',
             'auto_created',
+            'recent_context_events',
             'reporter',
             'commander',
             'created',
@@ -478,6 +480,26 @@ class IncidentSerializer(serializers.ModelSerializer):
     def get_auto_created(self, obj):
         """Whether this incident was automatically created."""
         return obj.reporter == "Auto-Incident System"
+
+    def get_recent_context_events(self, obj):
+        """
+        Get last 20 non-incident events from devices affected by this incident.
+        These provide context but are not assigned to the incident.
+        """
+        context_events = obj.get_recent_context_events(limit=20)
+
+        return [
+            {
+                'id': event.id,
+                'message': event.message,
+                'status': event.status,
+                'criticallity': event.criticallity,
+                'last_seen_at': event.last_seen_at,
+                'target_display': event.target_display if hasattr(event, 'target_display') else str(event.content_type) if event.content_type else 'Unknown',
+                'event_source_name': event.event_source.name if event.event_source else 'Unknown',
+            }
+            for event in context_events
+        ]
 
 
 class PagerDutyTemplateSerializer(serializers.ModelSerializer):
@@ -676,7 +698,7 @@ class GitLabSerializer(serializers.Serializer):
                 "This endpoint only accepts pipeline or merge request events"
             )
         return value
-    
+
     # Validate the entire payload, as object_attributes can be different for pipeline and merge request events.
     # We cannot use validate_object_attributes because it does not have access to the object_kind.
     def validate(self, attrs):
