@@ -249,10 +249,10 @@ class AlertCorrelationEngine:
                     if hasattr(interface, 'cable') and interface.cable:
                         cable = interface.cable
                         
-                        print(type(cable.a_terminations))
-                        print(type(cable.b_terminations))
-                        print(cable.a_terminations)
-                        print(cable.b_terminations)
+                        self.logger.info(type(cable.a_terminations))
+                        self.logger.info(type(cable.b_terminations))
+                        self.logger.info(cable.a_terminations)
+                        self.logger.info(cable.b_terminations)
                         
                         # a_terminations and b_terminations are lists, not QuerySets
                         # Check if this interface is on the A side by comparing object IDs
@@ -272,17 +272,21 @@ class AlertCorrelationEngine:
                         for termination in other_terminations:
                             # Get the device from the termination
                             if hasattr(termination, 'device'):
+                                self.logger.info(termination.device)
                                 connected_device = termination.device
                                 if isinstance(connected_device, Device) and connected_device != device:
                                     connected_devices.add(connected_device)
                                     traverse_cables(connected_device, depth + 1)
+                                    self.logger.info(connected_device)
+                                    self.logger.info("pridal js jsem to")
                             elif hasattr(termination, 'interface') and termination.interface:
                                 # Handle interface terminations
                                 connected_device = termination.interface.device
                                 if isinstance(connected_device, Device) and connected_device != device:
                                     connected_devices.add(connected_device)
                                     traverse_cables(connected_device, depth + 1)
-                                    
+                                    self.logger.info(connected_device)
+                                    self.logger.info("pridal js jsem to 2")
             except Exception as e:
                 self.logger.warning(f"Error processing device {device} at depth {depth}: {e}")
         
