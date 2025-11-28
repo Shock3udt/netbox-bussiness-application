@@ -249,6 +249,10 @@ class AlertCorrelationEngine:
                     if hasattr(interface, 'cable') and interface.cable:
                         cable = interface.cable
                         
+                        if 'peer' in [tag.name for tag in cable.tags.all()]:
+                            self.logger.info(f"Skipping peer cable {cable.id} for device {device.name}")
+                            continue
+                        
                         # a_terminations and b_terminations are lists
                         # Check if this interface is on the A side by comparing object IDs
                         a_termination_ids = [t.id for t in cable.a_terminations]
