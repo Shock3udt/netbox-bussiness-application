@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('business_application', '0008_add_external_workflow'),
+        ('business_application', '0009_externalworkflow_tags_workflowexecution'),
     ]
 
     operations = [
