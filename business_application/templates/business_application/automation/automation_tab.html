@@ -1,0 +1,369 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load static %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-robot"></i> Available Automations
+                <span class="badge bg-primary ms-2">{{ workflows_count }}</span>
+            </h5>
+            <div class="card-body">
+                {% if workflows %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Workflow Name</th>
+                                    <th>Type</th>
+                                    <th>Platform</th>
+                                    <th>Description</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in workflows %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ item.workflow.get_absolute_url }}">
+                                            <strong>{{ item.workflow.name }}</strong>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        {% if item.workflow.workflow_type == "aap" %}
+                                            {% if item.workflow.aap_resource_type == "workflow" %}
+                                                <span class="badge bg-purple"><i class="mdi mdi-sitemap"></i> Workflow</span>
+                                            {% else %}
+                                                <span class="badge bg-blue"><i class="mdi mdi-play-circle"></i> Job</span>
+                                            {% endif %}
+                                        {% elif item.workflow.workflow_type == "n8n" %}
+                                            <span class="badge bg-success"><i class="mdi mdi-webhook"></i> Webhook</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if item.workflow.workflow_type == "aap" %}
+                                            <span class="badge bg-primary"><i class="mdi mdi-ansible"></i> AAP</span>
+                                        {% elif item.workflow.workflow_type == "n8n" %}
+                                            <span class="badge bg-success"><i class="mdi mdi-webhook"></i> N8N</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ item.workflow.description|default:"No description"|truncatewords:15 }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary me-1" 
+                                                onclick="showParameters({{ item.workflow.id }}, '{{ item.workflow.name|escapejs }}')"
+                                                title="View Parameters">
+                                            <i class="mdi mdi-code-json"></i> Parameters
+                                        </button>
+                                        <button class="btn btn-sm btn-success execute-btn" 
+                                                data-workflow-id="{{ item.workflow.id }}"
+                                                data-workflow-name="{{ item.workflow.name }}"
+                                                data-object-type="{{ object_type }}"
+                                                data-object-id="{{ object.pk }}"
+                                                onclick="executeWorkflow(this)"
+                                                title="Execute Workflow">
+                                            <i class="mdi mdi-play"></i> Execute
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="mdi mdi-information-outline"></i>
+                        No automation workflows are configured for {{ object_type }} objects.
+                        <a href="{% url 'plugins:business_application:externalworkflow_add' %}" class="alert-link">
+                            Create a new workflow
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if workflows %}
+<!-- Workflow Parameters Section -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-code-json"></i> Workflow Parameters Preview
+            </h5>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Select a workflow to preview the parameters that will be sent when executing.
+                </p>
+                
+                <div class="accordion" id="workflowParametersAccordion">
+                    {% for item in workflows %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading-{{ item.workflow.id }}">
+                            <button class="accordion-button collapsed" type="button" 
+                                    data-bs-toggle="collapse" 
+                                    data-bs-target="#collapse-{{ item.workflow.id }}" 
+                                    aria-expanded="false" 
+                                    aria-controls="collapse-{{ item.workflow.id }}">
+                                {% if item.workflow.workflow_type == "aap" %}
+                                    <i class="mdi mdi-ansible me-2"></i>
+                                {% else %}
+                                    <i class="mdi mdi-webhook me-2"></i>
+                                {% endif %}
+                                {{ item.workflow.name }}
+                            </button>
+                        </h2>
+                        <div id="collapse-{{ item.workflow.id }}" 
+                             class="accordion-collapse collapse" 
+                             aria-labelledby="heading-{{ item.workflow.id }}" 
+                             data-bs-parent="#workflowParametersAccordion">
+                            <div class="accordion-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6><i class="mdi mdi-cog"></i> Workflow Configuration</h6>
+                                        <table class="table table-sm">
+                                            <tr>
+                                                <td><strong>Type:</strong></td>
+                                                <td>{{ item.workflow.get_workflow_type_display }}</td>
+                                            </tr>
+                                            {% if item.workflow.workflow_type == "aap" %}
+                                            <tr>
+                                                <td><strong>AAP URL:</strong></td>
+                                                <td><code>{{ item.workflow.aap_url }}</code></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Resource:</strong></td>
+                                                <td>{{ item.workflow.get_aap_resource_type_display }} #{{ item.workflow.aap_resource_id }}</td>
+                                            </tr>
+                                            {% elif item.workflow.workflow_type == "n8n" %}
+                                            <tr>
+                                                <td><strong>Webhook:</strong></td>
+                                                <td><code class="text-break">{{ item.workflow.n8n_webhook_url }}</code></td>
+                                            </tr>
+                                            {% endif %}
+                                        </table>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6><i class="mdi mdi-code-json"></i> Resolved Parameters</h6>
+                                        {% if item.mapped_params %}
+                                            <div class="card bg-light">
+                                                <div class="card-body p-2">
+                                                    <pre class="mb-0" style="max-height: 200px; overflow-y: auto; font-size: 0.8em;" id="params-{{ item.workflow.id }}">{{ item.mapped_params }}</pre>
+                                                </div>
+                                            </div>
+                                        {% else %}
+                                            <p class="text-muted">No parameters mapped. Default object data will be used.</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Execution Result Modal -->
+<div class="modal fade" id="executionResultModal" tabindex="-1" aria-labelledby="executionResultModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="executionResultModalLabel">
+                    <i class="mdi mdi-robot"></i> Workflow Execution
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="executionResultBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Executing...</span>
+                    </div>
+                    <p class="mt-2">Executing workflow...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+
+<script>
+// Store CSRF token for API calls
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || 
+                  document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+
+// Pretty print parameters on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Pretty print all parameter pre elements
+    document.querySelectorAll('pre[id^="params-"]').forEach(function(element) {
+        try {
+            const content = element.textContent.trim();
+            if (content && content !== 'None' && content !== '{}') {
+                // Try to parse as Python dict representation and convert to JSON
+                const jsonStr = content
+                    .replace(/'/g, '"')
+                    .replace(/None/g, 'null')
+                    .replace(/True/g, 'true')
+                    .replace(/False/g, 'false');
+                const parsed = JSON.parse(jsonStr);
+                element.textContent = JSON.stringify(parsed, null, 2);
+            }
+        } catch (e) {
+            // If parsing fails, leave as-is
+            console.debug('Could not parse params:', e);
+        }
+    });
+});
+
+function showParameters(workflowId, workflowName) {
+    // Open the accordion for the specified workflow
+    const collapseElement = document.getElementById('collapse-' + workflowId);
+    if (collapseElement) {
+        const bsCollapse = new bootstrap.Collapse(collapseElement, {
+            show: true
+        });
+    }
+    
+    // Scroll to the accordion
+    const accordionElement = document.getElementById('workflowParametersAccordion');
+    if (accordionElement) {
+        accordionElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function executeWorkflow(button) {
+    const workflowId = button.dataset.workflowId;
+    const workflowName = button.dataset.workflowName;
+    const objectType = button.dataset.objectType;
+    const objectId = button.dataset.objectId;
+    
+    // Show modal with loading state
+    const modal = new bootstrap.Modal(document.getElementById('executionResultModal'));
+    document.getElementById('executionResultModalLabel').innerHTML = 
+        '<i class="mdi mdi-robot"></i> Executing: ' + workflowName;
+    document.getElementById('executionResultBody').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Executing...</span>
+            </div>
+            <p class="mt-2">Executing workflow...</p>
+        </div>
+    `;
+    modal.show();
+    
+    // Disable button during execution
+    button.disabled = true;
+    const originalContent = button.innerHTML;
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Running...';
+    
+    // Make API call to execute workflow
+    fetch('/api/plugins/business-application/external-workflows/' + workflowId + '/execute/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({
+            object_type: objectType,
+            object_id: objectId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        let resultHtml = '';
+        
+        if (data.success) {
+            resultHtml = `
+                <div class="alert alert-success">
+                    <h5><i class="mdi mdi-check-circle"></i> Workflow Triggered Successfully</h5>
+                    <p class="mb-0">${data.message || 'The workflow has been triggered.'}</p>
+                </div>
+            `;
+            
+            if (data.execution_id) {
+                resultHtml += `
+                    <div class="mt-3">
+                        <strong>Execution ID:</strong> <code>${data.execution_id}</code>
+                    </div>
+                `;
+            }
+            
+            if (data.details) {
+                resultHtml += `
+                    <div class="mt-3">
+                        <h6>Execution Details:</h6>
+                        <div class="card bg-light">
+                            <div class="card-body p-2">
+                                <pre class="mb-0" style="max-height: 200px; overflow-y: auto; font-size: 0.8em;">${JSON.stringify(data.details, null, 2)}</pre>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            resultHtml = `
+                <div class="alert alert-danger">
+                    <h5><i class="mdi mdi-alert-circle"></i> Execution Failed</h5>
+                    <p class="mb-0">${data.error || data.message || 'An error occurred while executing the workflow.'}</p>
+                </div>
+            `;
+            
+            if (data.details) {
+                resultHtml += `
+                    <div class="mt-3">
+                        <h6>Error Details:</h6>
+                        <div class="card bg-light">
+                            <div class="card-body p-2">
+                                <pre class="mb-0" style="max-height: 200px; overflow-y: auto; font-size: 0.8em;">${JSON.stringify(data.details, null, 2)}</pre>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Show parameters that were sent
+        if (data.parameters_sent) {
+            resultHtml += `
+                <div class="mt-3">
+                    <h6>Parameters Sent:</h6>
+                    <div class="card bg-light">
+                        <div class="card-body p-2">
+                            <pre class="mb-0" style="max-height: 200px; overflow-y: auto; font-size: 0.8em;">${JSON.stringify(data.parameters_sent, null, 2)}</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        document.getElementById('executionResultBody').innerHTML = resultHtml;
+    })
+    .catch(error => {
+        document.getElementById('executionResultBody').innerHTML = `
+            <div class="alert alert-danger">
+                <h5><i class="mdi mdi-alert-circle"></i> Request Failed</h5>
+                <p class="mb-0">Failed to communicate with the server: ${error.message}</p>
+            </div>
+        `;
+    })
+    .finally(() => {
+        // Re-enable button
+        button.disabled = false;
+        button.innerHTML = originalContent;
+    });
+}
+</script>
+{% endblock %}
+

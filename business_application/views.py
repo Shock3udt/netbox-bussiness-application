@@ -858,6 +858,139 @@ class DeviceEventsView(generic.ObjectView):
             }
         )
 
+
+@register_model_view(Device, name='automation', path='automation')
+class DeviceAutomationView(generic.ObjectView):
+    """Automation tab for Device objects showing relevant external workflows"""
+    queryset = Device.objects.all()
+    template_name = 'business_application/automation/automation_tab.html'
+
+    tab = ViewTab(
+        label='Automation',
+        badge=lambda obj: ExternalWorkflow.objects.filter(object_type='device', enabled=True).count(),
+        permission='dcim.view_device',
+        weight=600
+    )
+
+    def get(self, request, pk):
+        obj = self.get_object(pk=pk)
+
+        # Get all enabled workflows for device object type
+        workflows = ExternalWorkflow.objects.filter(
+            object_type='device',
+            enabled=True
+        ).order_by('name')
+
+        # Pre-compute mapped parameters for each workflow
+        workflows_with_params = []
+        for workflow in workflows:
+            mapped_params = workflow.get_mapped_parameters(obj)
+            workflows_with_params.append({
+                'workflow': workflow,
+                'mapped_params': mapped_params,
+            })
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'object_type': 'device',
+                'workflows': workflows_with_params,
+                'workflows_count': workflows.count(),
+            }
+        )
+
+
+@register_model_view(Incident, name='automation', path='automation')
+class IncidentAutomationView(generic.ObjectView):
+    """Automation tab for Incident objects showing relevant external workflows"""
+    queryset = Incident.objects.all()
+    template_name = 'business_application/automation/automation_tab.html'
+
+    tab = ViewTab(
+        label='Automation',
+        badge=lambda obj: ExternalWorkflow.objects.filter(object_type='incident', enabled=True).count(),
+        permission='business_application.view_incident',
+        weight=200
+    )
+
+    def get(self, request, pk):
+        obj = self.get_object(pk=pk)
+
+        # Get all enabled workflows for incident object type
+        workflows = ExternalWorkflow.objects.filter(
+            object_type='incident',
+            enabled=True
+        ).order_by('name')
+
+        # Pre-compute mapped parameters for each workflow
+        workflows_with_params = []
+        for workflow in workflows:
+            mapped_params = workflow.get_mapped_parameters(obj)
+            workflows_with_params.append({
+                'workflow': workflow,
+                'mapped_params': mapped_params,
+            })
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'object_type': 'incident',
+                'workflows': workflows_with_params,
+                'workflows_count': workflows.count(),
+            }
+        )
+
+
+@register_model_view(Event, name='automation', path='automation')
+class EventAutomationView(generic.ObjectView):
+    """Automation tab for Event objects showing relevant external workflows"""
+    queryset = Event.objects.all()
+    template_name = 'business_application/automation/automation_tab.html'
+
+    tab = ViewTab(
+        label='Automation',
+        badge=lambda obj: ExternalWorkflow.objects.filter(object_type='event', enabled=True).count(),
+        permission='business_application.view_event',
+        weight=200
+    )
+
+    def get(self, request, pk):
+        obj = self.get_object(pk=pk)
+
+        # Get all enabled workflows for event object type
+        workflows = ExternalWorkflow.objects.filter(
+            object_type='event',
+            enabled=True
+        ).order_by('name')
+
+        # Pre-compute mapped parameters for each workflow
+        workflows_with_params = []
+        for workflow in workflows:
+            mapped_params = workflow.get_mapped_parameters(obj)
+            workflows_with_params.append({
+                'workflow': workflow,
+                'mapped_params': mapped_params,
+            })
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'object_type': 'event',
+                'workflows': workflows_with_params,
+                'workflows_count': workflows.count(),
+            }
+        )
+
+
 # ServiceDependency Views
 class ServiceDependencyListView(generic.ObjectListView):
     queryset = ServiceDependency.objects.all()
