@@ -124,6 +124,33 @@ class TechnicalServicePagerDutyForm(forms.ModelForm):
         )
 
 
+class TechnicalServiceAssignDevicesForm(forms.ModelForm):
+    """
+    Form for assigning existing devices to a TechnicalService.
+    """
+    class Meta:
+        model = TechnicalService
+        fields = ['devices']
+
+
+class TechnicalServiceAssignVMsForm(forms.ModelForm):
+    """
+    Form for assigning existing virtual machines to a TechnicalService.
+    """
+    class Meta:
+        model = TechnicalService
+        fields = ['vms']
+
+
+class TechnicalServiceAssignClustersForm(forms.ModelForm):
+    """
+    Form for assigning existing clusters to a TechnicalService.
+    """
+    class Meta:
+        model = TechnicalService
+        fields = ['clusters']
+
+
 class ServiceDependencyForm(forms.ModelForm):
     """
     Form for creating and editing ServiceDependency objects.
