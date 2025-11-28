@@ -112,9 +112,15 @@
                                 {% if object.aap_resource_id %}
                                     <code>{{ object.aap_resource_id }}</code>
                                     {% if object.aap_url %}
-                                        <a href="{{ object.aap_url }}/#/templates/{{ object.aap_resource_type }}_template/{{ object.aap_resource_id }}" target="_blank" class="btn btn-sm btn-outline-info ms-2">
+                                        {% if object.aap_resource_type == "workflow" %}
+                                        <a href="{{ object.aap_url }}/#/templates/workflow_job_template/{{ object.aap_resource_id }}/" target="_blank" class="btn btn-sm btn-outline-info ms-2">
                                             <i class="mdi mdi-open-in-new"></i> View in AAP
                                         </a>
+                                        {% else %}
+                                        <a href="{{ object.aap_url }}/#/templates/job_template/{{ object.aap_resource_id }}/" target="_blank" class="btn btn-sm btn-outline-info ms-2">
+                                            <i class="mdi mdi-open-in-new"></i> View in AAP
+                                        </a>
+                                        {% endif %}
                                     {% endif %}
                                 {% else %}
                                     <span class="text-muted">Not configured</span>
