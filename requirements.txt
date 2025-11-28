@@ -1,5 +1,5 @@
 django
 djangorestframework
 requests
-django-filter>=21.1
-django-htmx>=1.20.0
+django-filter==25.2
+django-htmx==1.26.0

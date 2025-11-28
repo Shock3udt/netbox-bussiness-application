@@ -28,7 +28,7 @@ from business_application.api.serializers import (
     SignalFXAlertSerializer,
     EmailAlertSerializer,
     GitLabSerializer,
-    PagerDutyTemplateSerializer
+    PagerDutyTemplateSerializer,
     ExternalWorkflowSerializer,
     WorkflowExecutionSerializer
 )
@@ -618,7 +618,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
     def execute_workflow(self, request, pk=None):
         """
         Execute a workflow against a specific object.
-        
+
         Expected payload:
         {
             "object_type": "device|incident|event",
@@ -693,7 +693,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
 
             # Execute based on workflow type
             execution_result = None
-            
+
             try:
                 if workflow.workflow_type == 'aap':
                     # Execute AAP workflow/job
@@ -747,7 +747,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
     def _execute_aap_workflow(self, workflow, params, source_obj):
         """Execute an AAP workflow or job template"""
         from requests.auth import HTTPBasicAuth
-        
+
         try:
             # Get AAP configuration
             aap_auth_type = external_workflow_config.AAP_AUTH_TYPE
@@ -759,7 +759,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
 
             # Use workflow-specific URL or fall back to default
             aap_url = workflow.aap_url or external_workflow_config.AAP_DEFAULT_URL
-            
+
             if not aap_url:
                 return {
                     'success': False,
@@ -776,14 +776,14 @@ class ExternalWorkflowViewSet(ModelViewSet):
 
             # Build payload
             payload = {}
-            
+
             # Add extra_vars if present in mapped params
             if 'extra_vars' in params:
                 payload['extra_vars'] = params['extra_vars']
             elif params:
                 # If no explicit extra_vars, use all params as extra_vars
                 payload['extra_vars'] = params
-            
+
             # Add limit if present
             if 'limit' in params:
                 payload['limit'] = params['limit']
@@ -794,7 +794,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
             # Determine authentication method
             auth = None
             headers = {'Content-Type': 'application/json'}
-            
+
             if aap_auth_type == 'basic':
                 # Basic authentication
                 if not aap_username or not aap_password:
@@ -841,7 +841,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
                 verify=verify_ssl,
                 timeout=timeout
             )
-            
+
             if response.status_code in [200, 201, 202]:
                 data = response.json()
                 job_id = data.get('id') or data.get('job') or data.get('workflow_job')
@@ -902,9 +902,9 @@ class ExternalWorkflowViewSet(ModelViewSet):
             n8n_api_key = external_workflow_config.N8N_API_KEY
             verify_ssl = external_workflow_config.N8N_VERIFY_SSL
             timeout = external_workflow_config.N8N_TIMEOUT
-            
+
             webhook_url = workflow.n8n_webhook_url
-            
+
             if not webhook_url:
                 return {
                     'success': False,
@@ -928,7 +928,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
 
             # Build headers
             headers = {'Content-Type': 'application/json'}
-            
+
             # Add API key if configured (for authenticated webhooks)
             if n8n_api_key:
                 headers['X-N8N-API-KEY'] = n8n_api_key
@@ -941,16 +941,16 @@ class ExternalWorkflowViewSet(ModelViewSet):
                 verify=verify_ssl,
                 timeout=timeout
             )
-            
+
             if response.status_code in [200, 201, 202]:
                 # Try to parse response as JSON, fall back to text
                 try:
                     response_data = response.json()
                 except ValueError:
                     response_data = {'response_text': response.text[:500] if response.text else 'No response body'}
-                
+
                 execution_id = response.headers.get('X-Execution-Id') or response.headers.get('X-N8N-Execution-Id')
-                
+
                 return {
                     'success': True,
                     'message': 'N8N webhook triggered successfully',
@@ -1545,7 +1545,7 @@ class AlertIngestionViewSet(ViewSet):
             },
             "raw_data": self._clean_raw_data(email_data)
         }
-        
+
     def _transform_gitlab_merge_request(self, gitlab_data):
         """
         Transform GitLab merge request webhook format to standard format.
@@ -1554,12 +1554,12 @@ class AlertIngestionViewSet(ViewSet):
         project = gitlab_data.get('project', {})
         user = gitlab_data.get('user', {})
         assignees = gitlab_data.get('assignees', [])
-        
+
         # Map GitLab merge request action and state to event status and severity
         mr_action = object_attributes.get('action', 'unknown')
         mr_state = object_attributes.get('state', 'unknown')
         event_status, event_severity = self._map_gitlab_merge_request_status(mr_action, mr_state)
-        
+
         # Generate comprehensive message with merge request information
         mr_iid = object_attributes.get('iid', 'unknown')
         mr_title = object_attributes.get('title', 'No title')
@@ -1567,25 +1567,25 @@ class AlertIngestionViewSet(ViewSet):
         author_name = user.get('name', 'Unknown')
         source_branch = object_attributes.get('source_branch', 'unknown')
         target_branch = object_attributes.get('target_branch', 'unknown')
-        
+
         # Build detailed message
         message = f"GitLab MR !{mr_iid} {mr_action} in {project_path}: {mr_title}"
         if source_branch and target_branch:
             message += f" ({source_branch} → {target_branch})"
         if author_name and author_name != 'Unknown':
             message += f" by {author_name}"
-            
+
         # Add assignee information if available
         if assignees:
             assignee_names = [assignee.get('name', 'Unknown') for assignee in assignees]
             message += f" - Assigned to: {', '.join(assignee_names)}"
-        
+
         # Create timestamp from merge request data
         timestamp = self._parse_gitlab_timestamp(
-            object_attributes.get('created_at') or 
+            object_attributes.get('created_at') or
             object_attributes.get('updated_at')
         )
-        
+
         return {
             "source": "gitlab",
             "timestamp": timestamp,
@@ -1703,7 +1703,7 @@ class AlertIngestionViewSet(ViewSet):
         Map GitLab merge request action and state to event status and severity.
         Returns tuple of (event_status, event_severity).
         """
-        
+
         # Priority mapping: action takes precedence over state for determining severity
         action_mapping = {
             'open': ('triggered', 'low'),
@@ -1716,7 +1716,7 @@ class AlertIngestionViewSet(ViewSet):
             'approval': ('ok', 'low'),
             'unapproval': ('triggered', 'medium'),
         }
-        
+
         # State-based mapping as fallback
         state_mapping = {
             'opened': ('triggered', 'low'),
@@ -1724,7 +1724,7 @@ class AlertIngestionViewSet(ViewSet):
             'merged': ('ok', 'low'),
             'locked': ('suppressed', 'low'),
         }
-        
+
         # Check action first, then state, then default
         if mr_action in action_mapping:
             return action_mapping[mr_action]
@@ -1741,7 +1741,7 @@ class AlertIngestionViewSet(ViewSet):
         """
         if not timestamp_str:
             return timezone.now()
-            
+
         try:
             # GitLab timestamps are typically in ISO format with Z suffix
             # Example: "2025-11-27T08:32:43.809Z"
@@ -1752,14 +1752,14 @@ class AlertIngestionViewSet(ViewSet):
                 # Handle common GitLab timestamp format: 2025-11-27T08:32:43.809Z
                 timestamp_str = timestamp_str.replace('Z', '+00:00')
                 parsed_dt = datetime.fromisoformat(timestamp_str)
-            
+
             # Ensure timezone awareness
             if parsed_dt.tzinfo is None:
                 # Assume UTC if no timezone info - use Django's timezone.now() timezone
                 parsed_dt = timezone.make_aware(parsed_dt, timezone.get_current_timezone())
-            
+
             return parsed_dt
-            
+
         except (ValueError, TypeError) as e:
             logger.warning(f"Failed to parse GitLab timestamp '{timestamp_str}': {e}")
             return timezone.now()

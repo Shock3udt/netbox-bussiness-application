@@ -1,0 +1,34 @@
+{# business_application/templates/business_application/includes/routing_key_display.html #}
+<div class="routing-key-info">
+    {% if has_own_key %}
+        <div class="d-flex align-items-center mb-1">
+            <span class="badge bg-success me-2">
+                <i class="mdi mdi-key"></i> Own Key
+            </span>
+            <code class="text-monospace">{{ own_key_masked }}</code>
+        </div>
+    {% else %}
+        <span class="badge bg-secondary mb-1">
+            <i class="mdi mdi-key-chain"></i> No Own Key
+        </span>
+    {% endif %}
+
+    {% if show_inheritance and effective_source %}
+        <div class="small text-muted mt-1">
+            {% if has_own_key %}
+                <i class="mdi mdi-check-circle text-success"></i> Using own routing key
+            {% elif effective_key_masked %}
+                <i class="mdi mdi-arrow-up-circle text-info"></i> Inherited from:
+                <strong>{{ effective_source }}</strong>
+                <br>
+                <code class="text-monospace small">{{ effective_key_masked }}</code>
+            {% else %}
+                <i class="mdi mdi-alert-circle text-warning"></i> No routing key in hierarchy
+            {% endif %}
+        </div>
+    {% elif not effective_key_masked %}
+        <div class="small text-warning mt-1">
+            <i class="mdi mdi-alert"></i> No routing key configured - PagerDuty integration disabled
+        </div>
+    {% endif %}
+</div>
