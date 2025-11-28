@@ -7,22 +7,24 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow,
+    WorkflowExecution
 )
 from .forms import (
     BusinessApplicationForm, TechnicalServiceForm, ServiceDependencyForm, EventSourceForm, EventForm,
     MaintenanceForm, ChangeTypeForm, ChangeForm, IncidentForm, PagerDutyTemplateForm, TechnicalServicePagerDutyForm,
-    TechnicalServiceAssignDevicesForm, TechnicalServiceAssignVMsForm, TechnicalServiceAssignClustersForm
+    ExternalWorkflowForm, TechnicalServiceAssignDevicesForm, TechnicalServiceAssignVMsForm,
+    TechnicalServiceAssignClustersForm
 )
 from .tables import (
     BusinessApplicationTable, TechnicalServiceTable, ServiceDependencyTable,
     UpstreamDependencyTable, DownstreamDependencyTable, DownstreamBusinessApplicationTable,
     EventSourceTable, EventTable, MaintenanceTable, ChangeTypeTable, ChangeTable, IncidentTable,
-    PagerDutyTemplateTable
+    PagerDutyTemplateTable, ExternalWorkflowTable
 )
 from .filtersets import (
     BusinessApplicationFilter, TechnicalServiceFilter, ServiceDependencyFilter, EventSourceFilter, EventFilter,
-    MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter, PagerDutyTemplateFilter
+    MaintenanceFilter, ChangeTypeFilter, ChangeFilter, IncidentFilter, PagerDutyTemplateFilter, ExternalWorkflowFilter
 )
 from django.http import JsonResponse
 from django.urls import reverse
@@ -896,6 +898,166 @@ class DeviceEventsView(generic.ObjectView):
             }
         )
 
+
+@register_model_view(Device, name='automation', path='automation')
+class DeviceAutomationView(generic.ObjectView):
+    """Automation tab for Device objects showing relevant external workflows"""
+    queryset = Device.objects.all()
+    template_name = 'business_application/automation/automation_tab.html'
+
+    tab = ViewTab(
+        label='Automation',
+        badge=lambda obj: ExternalWorkflow.objects.filter(object_type='device', enabled=True).count(),
+        permission='dcim.view_device',
+        weight=600
+    )
+
+    def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
+        obj = self.get_object(pk=pk)
+
+        # Get all enabled workflows for device object type
+        workflows = ExternalWorkflow.objects.filter(
+            object_type='device',
+            enabled=True
+        ).order_by('name')
+
+        # Pre-compute mapped parameters for each workflow
+        workflows_with_params = []
+        for workflow in workflows:
+            mapped_params = workflow.get_mapped_parameters(obj)
+            workflows_with_params.append({
+                'workflow': workflow,
+                'mapped_params': mapped_params,
+            })
+
+        # Get execution history for this object
+        device_ct = ContentType.objects.get_for_model(Device)
+        execution_history = WorkflowExecution.objects.filter(
+            content_type=device_ct,
+            object_id=obj.pk
+        ).select_related('workflow', 'user').order_by('-started_at')[:20]
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'object_type': 'device',
+                'workflows': workflows_with_params,
+                'workflows_count': workflows.count(),
+                'execution_history': execution_history,
+            }
+        )
+
+
+@register_model_view(Incident, name='automation', path='automation')
+class IncidentAutomationView(generic.ObjectView):
+    """Automation tab for Incident objects showing relevant external workflows"""
+    queryset = Incident.objects.all()
+    template_name = 'business_application/automation/automation_tab.html'
+
+    tab = ViewTab(
+        label='Automation',
+        badge=lambda obj: ExternalWorkflow.objects.filter(object_type='incident', enabled=True).count(),
+        permission='business_application.view_incident',
+        weight=200
+    )
+
+    def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
+        obj = self.get_object(pk=pk)
+
+        # Get all enabled workflows for incident object type
+        workflows = ExternalWorkflow.objects.filter(
+            object_type='incident',
+            enabled=True
+        ).order_by('name')
+
+        # Pre-compute mapped parameters for each workflow
+        workflows_with_params = []
+        for workflow in workflows:
+            mapped_params = workflow.get_mapped_parameters(obj)
+            workflows_with_params.append({
+                'workflow': workflow,
+                'mapped_params': mapped_params,
+            })
+
+        # Get execution history for this object
+        incident_ct = ContentType.objects.get_for_model(Incident)
+        execution_history = WorkflowExecution.objects.filter(
+            content_type=incident_ct,
+            object_id=obj.pk
+        ).select_related('workflow', 'user').order_by('-started_at')[:20]
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'object_type': 'incident',
+                'workflows': workflows_with_params,
+                'workflows_count': workflows.count(),
+                'execution_history': execution_history,
+            }
+        )
+
+
+@register_model_view(Event, name='automation', path='automation')
+class EventAutomationView(generic.ObjectView):
+    """Automation tab for Event objects showing relevant external workflows"""
+    queryset = Event.objects.all()
+    template_name = 'business_application/automation/automation_tab.html'
+
+    tab = ViewTab(
+        label='Automation',
+        badge=lambda obj: ExternalWorkflow.objects.filter(object_type='event', enabled=True).count(),
+        permission='business_application.view_event',
+        weight=200
+    )
+
+    def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
+        obj = self.get_object(pk=pk)
+
+        # Get all enabled workflows for event object type
+        workflows = ExternalWorkflow.objects.filter(
+            object_type='event',
+            enabled=True
+        ).order_by('name')
+
+        # Pre-compute mapped parameters for each workflow
+        workflows_with_params = []
+        for workflow in workflows:
+            mapped_params = workflow.get_mapped_parameters(obj)
+            workflows_with_params.append({
+                'workflow': workflow,
+                'mapped_params': mapped_params,
+            })
+
+        # Get execution history for this object
+        event_ct = ContentType.objects.get_for_model(Event)
+        execution_history = WorkflowExecution.objects.filter(
+            content_type=event_ct,
+            object_id=obj.pk
+        ).select_related('workflow', 'user').order_by('-started_at')[:20]
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'object_type': 'event',
+                'workflows': workflows_with_params,
+                'workflows_count': workflows.count(),
+                'execution_history': execution_history,
+            }
+        )
+
+
 # ServiceDependency Views
 class ServiceDependencyListView(generic.ObjectListView):
     queryset = ServiceDependency.objects.all()
@@ -941,6 +1103,30 @@ class PagerDutyTemplateEditView(generic.ObjectEditView):
 class PagerDutyTemplateDeleteView(generic.ObjectDeleteView):
     queryset = PagerDutyTemplate.objects.all()
 
+
+# External Workflow Views
+class ExternalWorkflowListView(generic.ObjectListView):
+    queryset = ExternalWorkflow.objects.all()
+    table = ExternalWorkflowTable
+    filterset = ExternalWorkflowFilter
+
+class ExternalWorkflowDetailView(generic.ObjectView):
+    queryset = ExternalWorkflow.objects.all()
+    template_name = 'business_application/externalworkflow/externalworkflow.html'
+
+class ExternalWorkflowCreateView(generic.ObjectEditView):
+    queryset = ExternalWorkflow.objects.all()
+    form = ExternalWorkflowForm
+
+class ExternalWorkflowEditView(generic.ObjectEditView):
+    queryset = ExternalWorkflow.objects.all()
+    form = ExternalWorkflowForm
+
+class ExternalWorkflowDeleteView(generic.ObjectDeleteView):
+    queryset = ExternalWorkflow.objects.all()
+
+class ExternalWorkflowChangeLogView(generic.ObjectChangeLogView):
+    queryset = ExternalWorkflow.objects.all()
 
 
 # Calendar View

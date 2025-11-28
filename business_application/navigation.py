@@ -20,6 +20,10 @@ _business_menu_items = (
         link='plugins:business_application:pagerdutytemplate_list',
         link_text='PagerDuty Templates',
     ),
+    PluginMenuItem(
+        link='plugins:business_application:externalworkflow_list',
+        link_text='External Workflows',
+    ),
 )
 
 _operations_menu_items = (

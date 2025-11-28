@@ -3,7 +3,8 @@ from django import forms
 import json
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, PagerDutyTemplateTypeChoices
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, PagerDutyTemplateTypeChoices,
+    ExternalWorkflow, ExternalWorkflowType
 )
 
 class BusinessApplicationForm(forms.ModelForm):
@@ -266,3 +267,69 @@ class IncidentForm(forms.ModelForm):
             'resolved_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
             'description': forms.Textarea(attrs={'rows': 4}),
         }
+
+
+class ExternalWorkflowForm(forms.ModelForm):
+    """
+    Form for creating and editing ExternalWorkflow objects.
+    """
+    attribute_mapping = forms.JSONField(
+        required=False,
+        help_text='JSON mapping of object attributes to workflow parameters',
+        widget=forms.Textarea(attrs={
+            'rows': 10,
+            'placeholder': '''{
+  "extra_vars": {
+    "device_name": "object.name",
+    "device_ip": "object.primary_ip4.address",
+    "severity": "object.severity"
+  },
+  "limit": "object.name"
+}'''
+        })
+    )
+
+    class Meta:
+        model = ExternalWorkflow
+        fields = [
+            'name',
+            'description',
+            'workflow_type',
+            'enabled',
+            'object_type',
+            'aap_url',
+            'aap_resource_type',
+            'aap_resource_id',
+            'n8n_webhook_url',
+            'attribute_mapping',
+        ]
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Add help text for conditional fields
+        self.fields['aap_url'].widget.attrs['placeholder'] = 'https://aap.example.com'
+        self.fields['n8n_webhook_url'].widget.attrs['placeholder'] = 'https://n8n.example.com/webhook/abc123'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        workflow_type = cleaned_data.get('workflow_type')
+
+        # Validate AAP-specific fields
+        if workflow_type == ExternalWorkflowType.AAP:
+            if not cleaned_data.get('aap_url'):
+                self.add_error('aap_url', 'AAP URL is required for AAP workflow type')
+            if not cleaned_data.get('aap_resource_type'):
+                self.add_error('aap_resource_type', 'AAP resource type is required for AAP workflow type')
+            if not cleaned_data.get('aap_resource_id'):
+                self.add_error('aap_resource_id', 'AAP resource ID is required for AAP workflow type')
+
+        # Validate N8N-specific fields
+        elif workflow_type == ExternalWorkflowType.N8N:
+            if not cleaned_data.get('n8n_webhook_url'):
+                self.add_error('n8n_webhook_url', 'N8N webhook URL is required for N8N workflow type')
+
+        return cleaned_data
