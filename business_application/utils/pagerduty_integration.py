@@ -45,14 +45,6 @@ class PagerDutyIncidentManager:
             'business_application', {}
         ).get('pagerduty_incident_creation_enabled', False)
 
-    @property
-    def global_routing_key(self) -> Optional[str]:
-        """Get the global/fallback PagerDuty routing key from settings."""
-        key = getattr(settings, 'PLUGINS_CONFIG', {}).get(
-            'business_application', {}
-        ).get('pagerduty_events_api_key', '')
-        return key.strip() if key else None
-
     def get_routing_key_for_incident(self, incident) -> Tuple[Optional[str], Optional[str]]:
         """
         Determine the appropriate routing key for an incident.
@@ -60,7 +52,9 @@ class PagerDutyIncidentManager:
         Priority:
         1. First affected TechnicalService with pagerduty_routing_key
         2. First affected BusinessApplication with pagerduty_routing_key
-        3. Global fallback from plugin settings
+
+        Note: There is no global fallback. Routing key must be configured
+        on TechnicalService or BusinessApplication.
 
         Args:
             incident: The NetBox Incident object
@@ -88,13 +82,7 @@ class PagerDutyIncidentManager:
                     )
                     return routing_key, f"BusinessApplication: {app.name}"
 
-        # Priority 3: Global fallback
-        if self.global_routing_key:
-            self.logger.debug(
-                f"Using global routing key for incident {incident.id}"
-            )
-            return self.global_routing_key, "Global (plugin settings)"
-
+        # No routing key found
         return None, None
 
     def create_pagerduty_incident(self, netbox_incident) -> Optional[Dict]:
