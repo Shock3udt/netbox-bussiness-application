@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('business_application', '0007_add_event_validity'),
+        ('business_application', '0010_businessapplication_pagerduty_routing_key_and_more'),
         ('dcim', '0200_populate_mac_addresses'),
     ]
 
