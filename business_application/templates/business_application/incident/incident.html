@@ -128,7 +128,7 @@
                 {% if object.affected_services.exists %}
                     <div class="row">
                         {% for service in object.affected_services.all %}
-                            <div class="col-md-12 mb-2">
+                            <div class="col-auto mb-2">
                                 <a href="{{ service.get_absolute_url }}" class="badge bg-warning text-dark">
                                     <i class="mdi mdi-cog"></i> {{ service.name }}
                                 </a>
@@ -151,7 +151,7 @@
                 {% if object.affected_devices.exists %}
                     <div class="row">
                         {% for device in object.affected_devices.all %}
-                            <div class="col-md-12 mb-2">
+                            <div class="col-auto mb-2">
                                 <a href="{{ device.get_absolute_url }}" class="badge bg-warning text-dark">
                                     <i class="mdi mdi-server"></i> {{ device.name }}
                                 </a>
@@ -184,6 +184,8 @@
                                     <th>Criticality</th>
                                     <th>Last Seen</th>
                                     <th>Source</th>
+                                    <th>Target</th>
+
                                 </tr>
                             </thead>
                             <tbody>
@@ -196,6 +198,13 @@
                                     <td>
                                         {% if event.event_source %}
                                             <a href="{{ event.event_source.get_absolute_url }}">{{ event.event_source.name }}</a>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if event.obj %}
+                                            <a href="{{ event.obj.get_absolute_url }}">{{ event.obj.name }}</a>
                                         {% else %}
                                             <span class="text-muted">-</span>
                                         {% endif %}
