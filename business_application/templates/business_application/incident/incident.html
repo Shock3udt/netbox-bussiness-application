@@ -99,7 +99,7 @@
         <div class="card">
             <h5 class="card-header">
                 Responders
-                <span class="badge bg-secondary ms-2">{{ object.responders.count }}</span>
+                <span class="badge bg-secondary ms-2 text-white">{{ object.responders.count }}</span>
             </h5>
             <div class="card-body">
                 {% if object.responders.exists %}
@@ -122,13 +122,13 @@
         <div class="card">
             <h5 class="card-header">
                 Affected Services
-                <span class="badge bg-secondary ms-2">{{ object.affected_services.count }}</span>
+                <span class="badge bg-secondary ms-2 text-white">{{ object.affected_services.count }}</span>
             </h5>
             <div class="card-body">
                 {% if object.affected_services.exists %}
                     <div class="row">
                         {% for service in object.affected_services.all %}
-                            <div class="col-md-12 mb-2">
+                            <div class="col-auto mb-2">
                                 <a href="{{ service.get_absolute_url }}" class="badge bg-warning text-dark">
                                     <i class="mdi mdi-cog"></i> {{ service.name }}
                                 </a>
@@ -141,6 +141,29 @@
             </div>
         </div>
     </div>
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                Affected Devices
+                <span class="badge bg-secondary ms-2 text-white">{{ object.affected_devices.count }}</span>
+            </h5>
+            <div class="card-body">
+                {% if object.affected_devices.exists %}
+                    <div class="row">
+                        {% for device in object.affected_devices.all %}
+                            <div class="col-auto mb-2">
+                                <a href="{{ device.get_absolute_url }}" class="badge bg-warning text-dark">
+                                    <i class="mdi mdi-server"></i> {{ device.name }}
+                                </a>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No affected devices</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="row mt-3">
@@ -148,7 +171,7 @@
         <div class="card">
             <h5 class="card-header">
                 Related Events
-                <span class="badge bg-secondary ms-2">{{ object.events.count }}</span>
+                <span class="badge bg-secondary ms-2 text-white">{{ object.events.count }}</span>
             </h5>
             <div class="card-body">
                 {% if object.events.exists %}
@@ -161,6 +184,8 @@
                                     <th>Criticality</th>
                                     <th>Last Seen</th>
                                     <th>Source</th>
+                                    <th>Target</th>
+
                                 </tr>
                             </thead>
                             <tbody>
@@ -173,6 +198,13 @@
                                     <td>
                                         {% if event.event_source %}
                                             <a href="{{ event.event_source.get_absolute_url }}">{{ event.event_source.name }}</a>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if event.obj %}
+                                            <a href="{{ event.obj.get_absolute_url }}">{{ event.obj.name }}</a>
                                         {% else %}
                                             <span class="text-muted">-</span>
                                         {% endif %}

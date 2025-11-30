@@ -497,7 +497,7 @@ class IncidentViewSet(ModelViewSet):
             # Use the correlation engine to calculate blast radius
             from ..utils.correlation import AlertCorrelationEngine
             correlation_engine = AlertCorrelationEngine()
-            affected_services = correlation_engine.calculate_blast_radius(incident)
+            affected_services, affected_devices = correlation_engine.calculate_blast_radius(incident)
 
             # Serialize the services
             service_data = []
@@ -509,11 +509,21 @@ class IncidentViewSet(ModelViewSet):
                     'health_status': service.health_status
                 })
 
+            device_data = []
+            for device in affected_devices:
+                device_data.append({
+                    'id': device.id,
+                    'name': device.name,
+                    'device_type': str(device.device_type) if device.device_type else 'unknown',
+                })
+
             return Response({
                 'incident_id': incident.id,
                 'incident_title': incident.title,
                 'affected_services_count': len(affected_services),
-                'affected_services': service_data
+                'affected_services': service_data,
+                'affected_devices_count': len(affected_devices),
+                'affected_devices': device_data
             })
 
         except Exception as e:

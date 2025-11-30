@@ -8,6 +8,7 @@ from dcim.models import Device
 from virtualization.models import VirtualMachine
 from django.utils import timezone
 from django.db import models
+from django.db.models import Q
 from datetime import datetime, timedelta
 
 
@@ -125,13 +126,25 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
         device_ct = ContentType.objects.get_for_model(Device)
         vm_ct = ContentType.objects.get_for_model(VirtualMachine)
 
-        return Event.objects.filter(
-            created_at__gte=last_24h
-        ).filter(
-            models.Q(content_type=service_ct, object_id=obj.id) |
-            models.Q(content_type=device_ct, object_id__in=obj.devices.values_list('id', flat=True)) |
-            models.Q(content_type=vm_ct, object_id__in=obj.vms.values_list('id', flat=True))
+        service_events = Event.objects.filter(
+            created_at__gte=last_24h,
+            content_type=service_ct,
+            object_id=obj.id
         ).count()
+        
+        device_events = Event.objects.filter(
+            created_at__gte=last_24h,
+            content_type=device_ct,
+            object_id__in=obj.devices.values_list('id', flat=True)
+        ).count()
+        
+        vm_events = Event.objects.filter(
+            created_at__gte=last_24h,
+            content_type=vm_ct,
+            object_id__in=obj.vms.values_list('id', flat=True)
+        ).count()
+        
+        return service_events + device_events + vm_events
 
     def get_blast_radius_estimate(self, obj):
         """Estimate potential blast radius for incidents affecting this service."""
@@ -382,15 +395,18 @@ class IncidentSerializer(serializers.ModelSerializer):
     """
     responders_count = serializers.IntegerField(source='responders.count', read_only=True)
     affected_services_count = serializers.IntegerField(source='affected_services.count', read_only=True)
+    affected_devices_count = serializers.IntegerField(source='affected_devices.count', read_only=True)
     events_count = serializers.IntegerField(source='events.count', read_only=True)
 
     # Enhanced: Add automation insights
     affected_services = serializers.SerializerMethodField(read_only=True)
+    affected_devices = serializers.SerializerMethodField(read_only=True)
     event_sources = serializers.SerializerMethodField(read_only=True)
     correlation_window = serializers.SerializerMethodField(read_only=True)
     blast_radius = serializers.SerializerMethodField(read_only=True)
     duration_minutes = serializers.SerializerMethodField(read_only=True)
     auto_created = serializers.SerializerMethodField(read_only=True)
+    device_discovery_metadata = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Incident
@@ -406,13 +422,16 @@ class IncidentSerializer(serializers.ModelSerializer):
             'resolved_at',
             'responders_count',
             'affected_services_count',
+            'affected_devices_count',
             'events_count',
             'affected_services',
+            'affected_devices',
             'event_sources',
             'correlation_window',
             'blast_radius',
             'duration_minutes',
             'auto_created',
+            'device_discovery_metadata',
             'reporter',
             'commander',
             'pagerduty_dedup_key',
@@ -430,6 +449,20 @@ class IncidentSerializer(serializers.ModelSerializer):
                 'health_status': getattr(service, 'health_status', 'unknown')
             }
             for service in obj.affected_services.all()
+        ]
+
+    def get_affected_devices(self, obj):
+        """Detailed information about affected devices."""
+        return [
+            {
+                'id': device.id,
+                'name': device.name,
+                'device_type': str(device.device_type) if device.device_type else 'unknown',
+                'status': device.status if hasattr(device, 'status') else 'unknown',
+                'site': device.site.name if device.site else None,
+                'rack': device.rack.name if device.rack else None
+            }
+            for device in obj.affected_devices.all()
         ]
 
     def get_event_sources(self, obj):
@@ -453,19 +486,39 @@ class IncidentSerializer(serializers.ModelSerializer):
         return 0
 
     def get_blast_radius(self, obj):
-        """Estimated blast radius based on affected services and their dependencies."""
+        """Estimated blast radius based on affected services, devices and their dependencies."""
         affected_services = obj.affected_services.all()
+        affected_devices = obj.affected_devices.all()
 
         downstream_count = 0
         business_apps_count = 0
+        connected_devices_count = 0
 
         for service in affected_services:
             downstream_count += service.get_downstream_dependencies().count()
             business_apps_count += service.business_apps.count()
 
+        # Estimate connected devices via cable connections
+        try:
+            from business_application.utils.correlation import AlertCorrelationEngine
+            correlation_engine = AlertCorrelationEngine()
+            
+            for device in affected_devices:
+                try:
+                    if hasattr(correlation_engine, '_find_devices_via_cables'):
+                        connected_devices = getattr(correlation_engine, '_find_devices_via_cables')(device)
+                        connected_devices_count += len(connected_devices)
+                except Exception:
+                    pass  # Ignore errors in blast radius calculation
+        except ImportError:
+            # Handle circular import gracefully
+            pass
+
         return {
             'affected_services': affected_services.count(),
+            'affected_devices': affected_devices.count(),
             'potential_downstream_services': downstream_count,
+            'potential_connected_devices': connected_devices_count,
             'affected_business_applications': business_apps_count
         }
 
@@ -480,6 +533,41 @@ class IncidentSerializer(serializers.ModelSerializer):
     def get_auto_created(self, obj):
         """Whether this incident was automatically created."""
         return obj.reporter == "Auto-Incident System"
+
+    def get_device_discovery_metadata(self, obj):
+        """Metadata about how devices were discovered as affected."""
+        affected_devices = obj.affected_devices.all()
+        
+        if not affected_devices:
+            return {
+                'total_devices': 0,
+                'discovery_methods': []
+            }
+
+        # For each device, determine how it was likely discovered
+        discovery_methods = []
+        service_based_count = 0
+        cable_based_count = 0
+
+        for device in affected_devices:
+            # Check if device is associated with any affected services (service-based discovery)
+            device_services = device.technical_services.all()
+            affected_services = obj.affected_services.all()
+            
+            if any(service in affected_services for service in device_services):
+                service_based_count += 1
+                discovery_methods.append('service-based')
+            else:
+                # Likely discovered via cable connections
+                cable_based_count += 1
+                discovery_methods.append('cable-based')
+
+        return {
+            'total_devices': len(affected_devices),
+            'service_based_devices': service_based_count,
+            'cable_based_devices': cable_based_count,
+            'discovery_methods': list(set(discovery_methods))  # Unique methods
+        }
 
 
 class PagerDutyTemplateSerializer(serializers.ModelSerializer):

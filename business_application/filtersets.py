@@ -163,7 +163,7 @@ class IncidentFilter(NetBoxModelFilterSet):
 
     class Meta:
         model = Incident
-        fields = ['status', 'severity', 'responders', 'affected_services', 'reporter', 'commander']
+        fields = ['status', 'severity', 'responders', 'affected_services', 'affected_devices', 'reporter', 'commander']
 
 class PagerDutyTemplateFilter(NetBoxModelFilterSet):
     """
