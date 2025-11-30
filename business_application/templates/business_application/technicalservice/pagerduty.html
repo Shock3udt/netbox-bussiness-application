@@ -2,6 +2,7 @@
 {% load helpers %}
 {% load static %}
 {% load l10n %}
+{% load pagerduty_filters %}
 
 {% block title %}{{ object.name }} - PagerDuty Integration{% endblock %}
 
@@ -35,7 +36,7 @@
                 {% if object.has_pagerduty_integration %}
                     <div class="alert alert-success">
                         <i class="mdi mdi-check-circle me-2"></i>
-                        This technical service is <strong>fully configured</strong> for PagerDuty integration with both service definition and router rule templates:
+                        This technical service is <strong>fully configured</strong> for PagerDuty integration with both service definition and router rule templates.
                     </div>
                 {% elif object.pagerduty_service_definition or object.pagerduty_router_rule %}
                     <div class="alert alert-warning">
@@ -48,9 +49,45 @@
                         This technical service is not yet configured for PagerDuty integration. Assign both service definition and router rule templates to enable synchronization.
                     </div>
                 {% endif %}
-                
+
                 <div class="row mt-3">
-                    <div class="col-md-6">
+                    <!-- Routing Key Card -->
+                    <div class="col-md-4">
+                        <div class="card {% if object.pagerduty_routing_key %}border-success{% else %}border-secondary{% endif %}">
+                            <h6 class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="mdi mdi-key"></i> Routing Key</span>
+                                {% if object.pagerduty_routing_key %}
+                                    <span class="badge bg-success"><i class="mdi mdi-check"></i> Own Key</span>
+                                {% else %}
+                                    <span class="badge bg-secondary"><i class="mdi mdi-key-chain"></i> Inherited</span>
+                                {% endif %}
+                            </h6>
+                            <div class="card-body">
+                                {% if object.pagerduty_routing_key %}
+                                    <code class="text-success">{{ object.pagerduty_routing_key|mask_routing_key }}</code>
+                                    <br><small class="text-muted">This service has its own routing key</small>
+                                {% else %}
+                                    <span class="text-muted">No own routing key</span>
+                                    <br>
+                                    {% with routing_info=object.get_pagerduty_routing_key_with_source %}
+                                        {% if routing_info.0 %}
+                                            <small class="text-info">
+                                                <i class="mdi mdi-arrow-up"></i> Inherited: <code>{{ routing_info.0|mask_routing_key }}</code>
+                                                <br>From: {{ routing_info.1 }}
+                                            </small>
+                                        {% else %}
+                                            <small class="text-warning">
+                                                <i class="mdi mdi-alert"></i> No routing key in hierarchy!
+                                            </small>
+                                        {% endif %}
+                                    {% endwith %}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Service Definition Template Card -->
+                    <div class="col-md-4">
                         <div class="card {% if object.pagerduty_service_definition %}border-success{% else %}border-warning{% endif %}">
                             <h6 class="card-header d-flex justify-content-between align-items-center">
                                 Service Definition Template
@@ -71,7 +108,9 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
+
+                    <!-- Router Rule Template Card -->
+                    <div class="col-md-4">
                         <div class="card {% if object.pagerduty_router_rule %}border-success{% else %}border-warning{% endif %}">
                             <h6 class="card-header d-flex justify-content-between align-items-center">
                                 Router Rule Template
@@ -98,6 +137,95 @@
     </div>
 </div>
 
+<!-- Routing Key Hierarchy -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-key-chain"></i> Routing Key Hierarchy
+            </h5>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Routing keys are inherited from upstream (parent) services. The first routing key found in the hierarchy is used.
+                </p>
+
+                <!-- Current Service -->
+                <div class="d-flex align-items-center mb-2">
+                    <span class="badge bg-primary me-2">Current</span>
+                    <strong>{{ object.name }}</strong>
+                    {% if object.pagerduty_routing_key %}
+                        <code class="ms-2 text-success">{{ object.pagerduty_routing_key|mask_routing_key }}</code>
+                        <span class="badge bg-success ms-2">✓ Has Key</span>
+                    {% else %}
+                        <span class="text-muted ms-2">No own key</span>
+                    {% endif %}
+                </div>
+
+                <!-- Upstream Services -->
+                {% if object.upstream_dependencies.exists %}
+                    <div class="ms-4 border-start ps-3">
+                        <small class="text-muted d-block mb-2"><i class="mdi mdi-arrow-up"></i> Upstream (Parent) Services:</small>
+                        {% for dep in object.upstream_dependencies.all %}
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="mdi mdi-circle-small text-muted"></i>
+                                <a href="{{ dep.upstream_service.get_absolute_url }}">{{ dep.upstream_service.name }}</a>
+                                {% if dep.upstream_service.pagerduty_routing_key %}
+                                    <code class="ms-2 text-success">{{ dep.upstream_service.pagerduty_routing_key|mask_routing_key }}</code>
+                                    <span class="badge bg-success ms-1">Has Key</span>
+                                {% else %}
+                                    <span class="text-muted ms-2 small">No key</span>
+                                {% endif %}
+                                <span class="badge bg-secondary ms-2">{{ dep.get_dependency_type_display }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="ms-4 text-muted">
+                        <small><i class="mdi mdi-information-outline"></i> This is a root service (no upstream dependencies)</small>
+                    </div>
+                {% endif %}
+
+                <!-- Business Applications -->
+                {% if object.business_apps.exists %}
+                    <div class="ms-4 border-start ps-3 mt-3">
+                        <small class="text-muted d-block mb-2"><i class="mdi mdi-briefcase"></i> Business Applications (fallback):</small>
+                        {% for app in object.business_apps.all %}
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="mdi mdi-circle-small text-muted"></i>
+                                <a href="{{ app.get_absolute_url }}">{{ app.name }}</a>
+                                {% if app.pagerduty_routing_key %}
+                                    <code class="ms-2 text-info">{{ app.pagerduty_routing_key|mask_routing_key }}</code>
+                                    <span class="badge bg-info ms-1">Has Key</span>
+                                {% else %}
+                                    <span class="text-muted ms-2 small">No key</span>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <!-- Effective Routing Key Summary -->
+                {% with routing_info=object.get_pagerduty_routing_key_with_source %}
+                <div class="alert {% if routing_info.0 %}alert-success{% else %}alert-warning{% endif %} mt-3 mb-0">
+                    {% if routing_info.0 %}
+                        <i class="mdi mdi-check-circle me-2"></i>
+                        <strong>Effective Routing Key:</strong>
+                        <code>{{ routing_info.0|mask_routing_key }}</code>
+                        <br>
+                        <small>Source: {{ routing_info.1 }}</small>
+                    {% else %}
+                        <i class="mdi mdi-alert me-2"></i>
+                        <strong>No Routing Key Available!</strong>
+                        <br>
+                        <small>PagerDuty incidents cannot be created for this service. Configure a routing key on this service or an upstream service.</small>
+                    {% endif %}
+                </div>
+                {% endwith %}
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- PagerDuty Configuration -->
 <div class="row mb-3">
     <div class="col-12">
@@ -107,7 +235,7 @@
                 <div class="float-end">
                     {% if perms.business_application.change_technicalservice %}
                         <a href="{% url 'plugins:business_application:technicalservice_pagerduty_edit' object.pk %}" class="btn btn-sm btn-primary">
-                            <i class="mdi mdi-pencil"></i> {% if object.has_pagerduty_integration %}Change Templates{% elif object.has_partial_pagerduty_integration %}Complete Setup{% else %}Select Templates{% endif %}
+                            <i class="mdi mdi-pencil"></i> Edit
                         </a>
                     {% endif %}
                     {% if object.pagerduty_service_definition %}
@@ -133,19 +261,6 @@
             <div class="card-body">
                 {% if object.has_pagerduty_integration %}
                     <div class="row">
-                        <div class="col-md-12 mb-3">
-                            <h6><i class="mdi mdi-file-document-outline"></i> Template Information</h6>
-                            <table class="table table-sm">
-                                <tr>
-                                    <td><strong>Template Name:</strong></td>
-                                    <td><a href="{{ object.pagerduty_template.get_absolute_url }}">{{ object.pagerduty_template.name }}</a></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Template Description:</strong></td>
-                                    <td>{{ object.pagerduty_template.description|default:"No description" }}</td>
-                                </tr>
-                            </table>
-                        </div>
                         <div class="col-md-6">
                             <h6><i class="mdi mdi-information-outline"></i> Service Information</h6>
                             <table class="table table-sm">
@@ -158,7 +273,7 @@
                                     <td>{{ object.pagerduty_config.description|default:"Not specified" }}</td>
                                 </tr>
                                 <tr>
-                                    <td><strong>Configured Status (not actual PD status):</strong></td>
+                                    <td><strong>Status:</strong></td>
                                     <td>
                                         {% if object.pagerduty_config.status == 'active' %}
                                             <span class="badge bg-success">{{ object.pagerduty_config.status|title }}</span>
@@ -166,14 +281,6 @@
                                             <span class="badge bg-warning">{{ object.pagerduty_config.status|title }}</span>
                                         {% endif %}
                                     </td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Auto-resolve Timeout:</strong></td>
-                                    <td>{{ object.pagerduty_config.auto_resolve_timeout|default:"0" }} seconds</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Acknowledgement Timeout:</strong></td>
-                                    <td>{{ object.pagerduty_config.acknowledgement_timeout|default:"0" }} seconds</td>
                                 </tr>
                             </table>
                         </div>
@@ -185,81 +292,12 @@
                                         <td><strong>Policy ID:</strong></td>
                                         <td><code>{{ object.pagerduty_config.escalation_policy.id }}</code></td>
                                     </tr>
-                                    <tr>
-                                        <td><strong>Type:</strong></td>
-                                        <td>{{ object.pagerduty_config.escalation_policy.type|default:"escalation_policy_reference" }}</td>
-                                    </tr>
                                 </table>
                             {% else %}
                                 <p class="text-muted">No escalation policy configured</p>
                             {% endif %}
-
-                            <h6><i class="mdi mdi-alert-circle"></i> Incident Urgency Rule</h6>
-                            {% if object.pagerduty_config.incident_urgency_rule %}
-                                <table class="table table-sm">
-                                    <tr>
-                                        <td><strong>Type:</strong></td>
-                                        <td>{{ object.pagerduty_config.incident_urgency_rule.type|default:"constant" }}</td>
-                                    </tr>
-                                    {% if object.pagerduty_config.incident_urgency_rule.urgency %}
-                                    <tr>
-                                        <td><strong>Urgency:</strong></td>
-                                        <td>
-                                            {% if object.pagerduty_config.incident_urgency_rule.urgency == 'high' %}
-                                                <span class="badge bg-danger">{{ object.pagerduty_config.incident_urgency_rule.urgency|title }}</span>
-                                            {% elif object.pagerduty_config.incident_urgency_rule.urgency == 'low' %}
-                                                <span class="badge bg-info">{{ object.pagerduty_config.incident_urgency_rule.urgency|title }}</span>
-                                            {% else %}
-                                                <span class="badge bg-secondary">{{ object.pagerduty_config.incident_urgency_rule.urgency|title }}</span>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                    {% endif %}
-                                </table>
-                            {% else %}
-                                <p class="text-muted">No incident urgency rule configured</p>
-                            {% endif %}
                         </div>
                     </div>
-
-                    <!-- Alert Grouping Parameters -->
-                    {% if object.pagerduty_config.alert_grouping_parameters %}
-                    <div class="row mt-4">
-                        <div class="col-12">
-                            <h6><i class="mdi mdi-group"></i> Alert Grouping Parameters</h6>
-                            <table class="table table-sm">
-                                <tr>
-                                    <td><strong>Type:</strong></td>
-                                    <td>{{ object.pagerduty_config.alert_grouping_parameters.type }}</td>
-                                </tr>
-                                {% if object.pagerduty_config.alert_grouping_parameters.config %}
-                                    {% if object.pagerduty_config.alert_grouping_parameters.config.fields %}
-                                    <tr>
-                                        <td><strong>Grouping Fields:</strong></td>
-                                        <td>
-                                            {% for field in object.pagerduty_config.alert_grouping_parameters.config.fields %}
-                                                <code class="me-1">{{ field }}</code>
-                                            {% endfor %}
-                                        </td>
-                                    </tr>
-                                    {% endif %}
-                                    {% if object.pagerduty_config.alert_grouping_parameters.config.aggregate %}
-                                    <tr>
-                                        <td><strong>Aggregate:</strong></td>
-                                        <td>{{ object.pagerduty_config.alert_grouping_parameters.config.aggregate }}</td>
-                                    </tr>
-                                    {% endif %}
-                                    {% if object.pagerduty_config.alert_grouping_parameters.config.time_window %}
-                                    <tr>
-                                        <td><strong>Time Window:</strong></td>
-                                        <td>{{ object.pagerduty_config.alert_grouping_parameters.config.time_window }} seconds</td>
-                                    </tr>
-                                    {% endif %}
-                                {% endif %}
-                            </table>
-                        </div>
-                    </div>
-                    {% endif %}
 
                     <!-- Raw Configuration -->
                     <div class="row mt-4">
@@ -299,147 +337,62 @@
 {% block javascript %}
 {{ block.super }}
 
-<!-- Properly serialize PagerDuty config using Django's json_script -->
 {% if object.pagerduty_config %}
     {{ object.pagerduty_config|json_script:"pagerduty-config-data" }}
 {% endif %}
 
 <script>
-// Global functions - declared first to ensure availability
-function validatePagerDutyConfig() {
-    const resultsDiv = document.getElementById('validation-results');
-    resultsDiv.innerHTML = `
-        <div class="row mb-3">
-            <div class="col-12">
-                <div class="card border-info">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center">
-                            <div class="spinner-border spinner-border-sm text-info me-2" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <span>Validating PagerDuty configuration...</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Simulate validation (in real implementation, this would make an API call)
-    setTimeout(() => {
-        let errors = [];
-        
-        if (window.pagerDutyConfig) {
-            // Basic validation
-            if (!window.pagerDutyConfig.name) errors.push('Service name is required');
-            if (!window.pagerDutyConfig.description) errors.push('Service description is required');
-            if (!window.pagerDutyConfig.escalation_policy || !window.pagerDutyConfig.escalation_policy.id) {
-                errors.push('Escalation policy ID is required');
-            }
-        } else {
-            errors = ['No PagerDuty configuration found'];
-        }
-        
-        let resultHtml;
-        if (errors.length === 0) {
-            resultHtml = `
-                <div class="row mb-3">
-                    <div class="col-12">
-                        <div class="card border-success">
-                            <div class="card-body">
-                                <div class="alert alert-success mb-0">
-                                    <i class="mdi mdi-check-circle me-2"></i>
-                                    <strong>Validation Successful!</strong> 
-                                    The PagerDuty configuration appears to be valid and ready for synchronization.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        } else {
-            resultHtml = `
-                <div class="row mb-3">
-                    <div class="col-12">
-                        <div class="card border-danger">
-                            <div class="card-body">
-                                <div class="alert alert-danger mb-0">
-                                    <i class="mdi mdi-alert-circle me-2"></i>
-                                    <strong>Validation Errors:</strong>
-                                    <ul class="mb-0 mt-2">
-                                        ${errors.map(error => `<li>${error}</li>`).join('')}
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-        
-        resultsDiv.innerHTML = resultHtml;
-        
-        // Auto-hide after 10 seconds
-        setTimeout(() => {
-            resultsDiv.innerHTML = '';
-        }, 10000);
-    }, 1500);
-}
-
-function exportPagerDutyConfig() {
-    if (window.pagerDutyConfig) {
-        try {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(window.pagerDutyConfig, null, 2));
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "{{ object.name }}_pagerduty_config.json");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
-        } catch (e) {
-            alert('Error exporting configuration: ' + e.message);
-        }
-    } else {
-        alert('No PagerDuty configuration to export. Please configure PagerDuty integration first.');
-    }
-}
-
-// Safely serialize PagerDuty config using Django's json_script
 window.pagerDutyConfig = null;
 {% if object.pagerduty_config %}
 try {
     const configElement = document.getElementById('pagerduty-config-data');
     if (configElement) {
         window.pagerDutyConfig = JSON.parse(configElement.textContent);
-        console.log('Successfully loaded PagerDuty config:', window.pagerDutyConfig);
     }
 } catch (e) {
     console.error('Error parsing PagerDuty config:', e);
-    window.pagerDutyConfig = null;
 }
 {% endif %}
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Pretty print the JSON configuration
-    const configElement = document.getElementById('pagerduty-config-json');
-    if (configElement) {
-        try {
-            const jsonContent = configElement.textContent.trim();
-            // Check if content is empty, 'None', or 'null'
-            if (!jsonContent || jsonContent === 'None' || jsonContent === 'null') {
-                configElement.textContent = '';
-                return;
-            }
-            
-            const parsedJson = JSON.parse(jsonContent);
-            configElement.textContent = JSON.stringify(parsedJson, null, 2);
-        } catch (e) {
-            // If parsing fails, leave as is
-            console.warn('Could not parse PagerDuty configuration as JSON:', e);
+function validatePagerDutyConfig() {
+    const resultsDiv = document.getElementById('validation-results');
+    resultsDiv.innerHTML = '<div class="alert alert-info"><i class="mdi mdi-loading mdi-spin"></i> Validating...</div>';
+
+    setTimeout(() => {
+        let errors = [];
+        if (window.pagerDutyConfig) {
+            if (!window.pagerDutyConfig.name) errors.push('Service name is required');
+            if (!window.pagerDutyConfig.escalation_policy?.id) errors.push('Escalation policy ID is required');
+        } else {
+            errors = ['No PagerDuty configuration found'];
         }
+
+        if (errors.length === 0) {
+            resultsDiv.innerHTML = '<div class="alert alert-success"><i class="mdi mdi-check-circle"></i> Validation successful!</div>';
+        } else {
+            resultsDiv.innerHTML = '<div class="alert alert-danger"><i class="mdi mdi-alert-circle"></i> Errors: ' + errors.join(', ') + '</div>';
+        }
+        setTimeout(() => { resultsDiv.innerHTML = ''; }, 5000);
+    }, 1000);
+}
+
+function exportPagerDutyConfig() {
+    if (window.pagerDutyConfig) {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(window.pagerDutyConfig, null, 2));
+        const a = document.createElement('a');
+        a.href = dataStr;
+        a.download = "{{ object.name|slugify }}_pagerduty.json";
+        a.click();
+    } else {
+        alert('No configuration to export');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const configElement = document.getElementById('pagerduty-config-json');
+    if (configElement && window.pagerDutyConfig) {
+        configElement.textContent = JSON.stringify(window.pagerDutyConfig, null, 2);
     }
 });
-
-
 </script>
 {% endblock %}

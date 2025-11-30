@@ -2,7 +2,7 @@ import django_tables2 as tables
 from netbox.tables import NetBoxTable
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow
 )
 
 class BusinessApplicationTable(NetBoxTable):
@@ -301,3 +301,58 @@ class IncidentTable(NetBoxTable):
     class Meta(NetBoxTable.Meta):
         model = Incident
         fields = ['pk', 'title', 'status', 'severity', 'created_at', 'resolved_at', 'responders_count', 'affected_services_count', 'affected_devices_count', 'events_count', 'commander']
+
+
+class ExternalWorkflowTable(NetBoxTable):
+    name = tables.Column(linkify=True)
+    workflow_type = tables.TemplateColumn(
+        template_code='''
+        {% if record.workflow_type == "aap" %}
+            <span class="badge bg-primary"><i class="mdi mdi-ansible"></i> AAP</span>
+        {% elif record.workflow_type == "n8n" %}
+            <span class="badge bg-success"><i class="mdi mdi-webhook"></i> N8N</span>
+        {% else %}
+            {{ record.get_workflow_type_display }}
+        {% endif %}
+        ''',
+        verbose_name="Type"
+    )
+    object_type = tables.TemplateColumn(
+        template_code='''
+        {% if record.object_type == "device" %}
+            <span class="badge bg-info"><i class="mdi mdi-server"></i> Device</span>
+        {% elif record.object_type == "incident" %}
+            <span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Incident</span>
+        {% elif record.object_type == "event" %}
+            <span class="badge bg-warning text-dark"><i class="mdi mdi-bell-ring"></i> Event</span>
+        {% else %}
+            {{ record.get_object_type_display }}
+        {% endif %}
+        ''',
+        verbose_name="Trigger Object"
+    )
+    enabled = tables.TemplateColumn(
+        template_code='''
+        {% if record.enabled %}
+            <span class="badge bg-success"><i class="mdi mdi-check-circle"></i> Enabled</span>
+        {% else %}
+            <span class="badge bg-secondary"><i class="mdi mdi-minus-circle"></i> Disabled</span>
+        {% endif %}
+        ''',
+        verbose_name="Status"
+    )
+    workflow_identifier = tables.TemplateColumn(
+        template_code='''
+        {% if record.workflow_type == "aap" %}
+            <code>{{ record.aap_resource_type|title }}:{{ record.aap_resource_id }}</code>
+        {% elif record.workflow_type == "n8n" %}
+            <code>Webhook</code>
+        {% endif %}
+        ''',
+        verbose_name="Identifier"
+    )
+    description = tables.Column(verbose_name="Description")
+
+    class Meta(NetBoxTable.Meta):
+        model = ExternalWorkflow
+        fields = ['name', 'workflow_type', 'object_type', 'enabled', 'workflow_identifier', 'description', 'created', 'last_updated']

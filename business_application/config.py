@@ -1,5 +1,112 @@
 from django.conf import settings
 
+
+class ExternalWorkflowConfig:
+    """
+    Configuration settings for external workflow integrations (AAP/N8N).
+    These can be overridden in Django settings via PLUGINS_CONFIG.
+
+    Example configuration in NetBox's configuration.py:
+
+    PLUGINS_CONFIG = {
+        'business_application': {
+            # AAP Settings
+            'aap_default_url': 'https://aap.example.com',
+            'aap_auth_type': 'basic',  # 'basic' or 'token'
+            'aap_username': 'admin',   # For basic auth
+            'aap_password': 'password', # For basic auth
+            'aap_token': 'your-aap-oauth-token',  # For token auth
+            'aap_verify_ssl': True,
+            'aap_timeout': 30,
+
+            # N8N Settings
+            'n8n_default_url': 'https://n8n.example.com',
+            'n8n_api_key': '',
+            'n8n_verify_ssl': True,
+            'n8n_timeout': 30,
+
+            'workflow_execution_enabled': True,
+        }
+    }
+    """
+
+    @property
+    def AAP_DEFAULT_URL(self):
+        """Default AAP Controller URL."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('aap_default_url', '')
+
+    @property
+    def AAP_AUTH_TYPE(self):
+        """AAP authentication type: 'basic' or 'token'."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('aap_auth_type', 'token')
+
+    @property
+    def AAP_USERNAME(self):
+        """AAP username for basic authentication."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('aap_username', '')
+
+    @property
+    def AAP_PASSWORD(self):
+        """AAP password for basic authentication."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('aap_password', '')
+
+    @property
+    def AAP_TOKEN(self):
+        """AAP OAuth/Bearer token for authentication."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('aap_token', '')
+
+    @property
+    def AAP_VERIFY_SSL(self):
+        """Whether to verify SSL certificates for AAP connections."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('aap_verify_ssl', True)
+
+    @property
+    def AAP_TIMEOUT(self):
+        """Timeout in seconds for AAP API requests."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('aap_timeout', 30)
+
+    @property
+    def N8N_DEFAULT_URL(self):
+        """Default N8N instance URL."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('n8n_default_url', '')
+
+    @property
+    def N8N_API_KEY(self):
+        """N8N API key for authenticated webhooks (optional)."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('n8n_api_key', '')
+
+    @property
+    def N8N_VERIFY_SSL(self):
+        """Whether to verify SSL certificates for N8N connections."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('n8n_verify_ssl', True)
+
+    @property
+    def N8N_TIMEOUT(self):
+        """Timeout in seconds for N8N webhook requests."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('n8n_timeout', 30)
+
+    @property
+    def WORKFLOW_EXECUTION_ENABLED(self):
+        """Whether workflow execution is enabled (master switch)."""
+        plugin_config = getattr(settings, 'PLUGINS_CONFIG', {}).get('business_application', {})
+        return plugin_config.get('workflow_execution_enabled', True)
+
+
+# Singleton instance
+external_workflow_config = ExternalWorkflowConfig()
+
+
 class IncidentAutomationConfig:
     """
     Configuration settings for incident automation features.

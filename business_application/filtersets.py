@@ -2,7 +2,7 @@ from django.db.models import Q
 from netbox.filtersets import NetBoxModelFilterSet
 from .models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
-    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate
+    Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow
 )
 
 class BusinessApplicationFilter(NetBoxModelFilterSet):
@@ -172,3 +172,22 @@ class PagerDutyTemplateFilter(NetBoxModelFilterSet):
     class Meta:
         model = PagerDutyTemplate
         fields = ['name', 'template_type']
+
+
+class ExternalWorkflowFilter(NetBoxModelFilterSet):
+    """
+    Filters for the ExternalWorkflow model.
+    """
+
+    def search(self, queryset, name, value):
+        if not value:
+            return queryset
+        qs_filter = (
+            Q(name__icontains=value)
+            | Q(description__icontains=value)
+        )
+        return queryset.filter(qs_filter)
+
+    class Meta:
+        model = ExternalWorkflow
+        fields = ['name', 'workflow_type', 'object_type', 'enabled', 'aap_resource_type']
