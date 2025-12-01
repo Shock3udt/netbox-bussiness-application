@@ -4,7 +4,7 @@ from django.db.models import Q
 from .models import BusinessApplication, ServiceDependency
 from .tables import BusinessApplicationTable
 from virtualization.models import VirtualMachine
-from dcim.models import Device
+from dcim.models import Device, Interface
 
 class AppCodeExtension(PluginTemplateExtension):
     def left_page(self):
@@ -78,6 +78,30 @@ class DeviceAppCodeExtension(AppCodeExtension):
             current += 1
         return BusinessApplicationTable(apps)
 
+class InterfaceAppCodeExtension(AppCodeExtension):
+    models = ['dcim.interface']
+
+    def _get_related(self, obj):
+        # Get BusinessApplications related to the device that owns this interface
+        if obj.device:
+            return BusinessApplicationTable(
+                BusinessApplication.objects.filter(devices=obj.device)
+            )
+        return BusinessApplicationTable(BusinessApplication.objects.none())
+
+    def _get_downstream(self, obj):
+        # Get downstream apps via connected devices through this interface
+        apps = set()
+        if obj.device:
+            apps = apps.union(BusinessApplication.objects.filter(devices=obj.device))
+
+        # Follow cable connections from this interface
+        if hasattr(obj, 'cable') and obj.cable:
+            for termination in obj.cable.b_terminations:
+                if hasattr(termination, 'device') and termination.device:
+                    apps = apps.union(BusinessApplication.objects.filter(devices=termination.device))
+        return BusinessApplicationTable(apps)
+
 class VMAppCodeExtension(AppCodeExtension):
     models = ['virtualization.virtualmachine']
     def _get_related(self, obj):
@@ -106,6 +130,7 @@ class ClusterAppCodeExtension(AppCodeExtension):
 
 template_extensions = [
     DeviceAppCodeExtension,
+    InterfaceAppCodeExtension,
     VMAppCodeExtension,
     ClusterAppCodeExtension,
     TechnicalServiceAppCodeExtension,

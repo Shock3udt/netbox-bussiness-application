@@ -753,11 +753,13 @@ class AAPResourceType(ChoiceSet):
 class ExternalWorkflowObjectType(ChoiceSet):
     """Object types that can trigger external workflows"""
     DEVICE = 'device'
+    INTERFACE = 'interface'
     INCIDENT = 'incident'
     EVENT = 'event'
 
     CHOICES = [
         (DEVICE, 'Device', 'blue'),
+        (INTERFACE, 'Interface', 'cyan'),
         (INCIDENT, 'Incident', 'red'),
         (EVENT, 'Event', 'orange'),
     ]
