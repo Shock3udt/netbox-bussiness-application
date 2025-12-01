@@ -627,6 +627,13 @@ class Event(NetBoxModel):
         return self.is_valid and self.content_type and self.object_id
 
     @property
+    def is_valid(self):
+        """Check if this event is valid."""
+        return self.has_valid_target and \
+            self.criticallity in EventCrit.values() and \
+            self.status in EventStatus.values()
+
+    @property
     def target_display(self):
         """Get a display string for the target object."""
         if not self.has_valid_target:
@@ -780,7 +787,7 @@ class Incident(NetBoxModel):
         blank=True,
         help_text='Technical services affected by this incident'
     )
-    
+
     # Affected devices
     affected_devices = models.ManyToManyField(
         Device,
@@ -1026,7 +1033,7 @@ class WorkflowExecution(NetBoxModel):
         related_name='executions',
         help_text='The workflow that was executed'
     )
-    
+
     # Who triggered the execution
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1036,7 +1043,7 @@ class WorkflowExecution(NetBoxModel):
         related_name='workflow_executions',
         help_text='User who triggered the execution'
     )
-    
+
     # What object triggered it (polymorphic)
     content_type = models.ForeignKey(
         ContentType,
@@ -1047,7 +1054,7 @@ class WorkflowExecution(NetBoxModel):
         help_text='ID of the source object'
     )
     source_object = GenericForeignKey('content_type', 'object_id')
-    
+
     # Execution details
     status = models.CharField(
         max_length=20,
@@ -1055,7 +1062,7 @@ class WorkflowExecution(NetBoxModel):
         default=WorkflowExecutionStatus.PENDING,
         help_text='Current status of the execution'
     )
-    
+
     # Timestamps
     started_at = models.DateTimeField(
         auto_now_add=True,
@@ -1066,7 +1073,7 @@ class WorkflowExecution(NetBoxModel):
         blank=True,
         help_text='When the execution completed'
     )
-    
+
     # Request/Response data
     parameters_sent = models.JSONField(
         default=dict,

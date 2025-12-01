@@ -131,19 +131,19 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
             content_type=service_ct,
             object_id=obj.id
         ).count()
-        
+
         device_events = Event.objects.filter(
             created_at__gte=last_24h,
             content_type=device_ct,
             object_id__in=obj.devices.values_list('id', flat=True)
         ).count()
-        
+
         vm_events = Event.objects.filter(
             created_at__gte=last_24h,
             content_type=vm_ct,
             object_id__in=obj.vms.values_list('id', flat=True)
         ).count()
-        
+
         return service_events + device_events + vm_events
 
     def get_blast_radius_estimate(self, obj):
@@ -504,7 +504,7 @@ class IncidentSerializer(serializers.ModelSerializer):
         try:
             from business_application.utils.correlation import AlertCorrelationEngine
             correlation_engine = AlertCorrelationEngine()
-            
+
             for device in affected_devices:
                 try:
                     if hasattr(correlation_engine, '_find_devices_via_cables'):
@@ -594,7 +594,7 @@ class IncidentSerializer(serializers.ModelSerializer):
     def get_device_discovery_metadata(self, obj):
         """Metadata about how devices were discovered as affected."""
         affected_devices = obj.affected_devices.all()
-        
+
         if not affected_devices:
             return {
                 'total_devices': 0,
@@ -610,7 +610,7 @@ class IncidentSerializer(serializers.ModelSerializer):
             # Check if device is associated with any affected services (service-based discovery)
             device_services = device.technical_services.all()
             affected_services = obj.affected_services.all()
-            
+
             if any(service in affected_services for service in device_services):
                 service_based_count += 1
                 discovery_methods.append('service-based')
@@ -749,6 +749,15 @@ class GenericAlertSerializer(serializers.Serializer):
     target = TargetSerializer()
     raw_data = serializers.JSONField(required=False, default=dict)
 
+    def validate_severity(self, value):
+        """Validate alert severities."""
+        valid_severities = {'cri': 'critical', 'hig': 'high', 'med': 'medium', 'low': 'low', 'war': 'medium'}
+        if value.lower()[:3] not in valid_severities:
+            raise serializers.ValidationError(
+                f"severity must be one of {list(valid_severities.keys())}"
+            )
+        return valid_severities[value.lower()[:3]]
+
     def validate_dedup_id(self, value):
         """Ensure dedup_id is unique enough."""
         if not value:
@@ -817,6 +826,15 @@ class SignalFXAlertSerializer(serializers.Serializer):
                 f"alertState must be one of {valid_states}"
             )
         return value
+
+    def validate_severity(self, value):
+        """Validate SignalFX alert severities."""
+        valid_severities = {'cri': 'critical', 'hig': 'high', 'med': 'medium', 'low': 'low', 'war': 'medium'}
+        if value.lower()[:3] not in valid_severities:
+            raise serializers.ValidationError(
+                f"severity must be one of {list(valid_severities.keys())}"
+            )
+        return valid_severities[value.lower()[:3]]
 
     def validate_timestamp(self, value):
         """Convert Unix timestamp to datetime if provided."""

@@ -239,9 +239,9 @@
                                     <th>Message</th>
                                     <th>Status</th>
                                     <th>Criticality</th>
-                                    <th>Target</th>
                                     <th>Last Seen</th>
                                     <th>Source</th>
+                                    <th>Target</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -250,17 +250,17 @@
                                     <td><a href="{{ event.get_absolute_url }}">{{ event.message|truncatechars:50 }}</a></td>
                                     <td>{{ event.status|event_status_badge }}</td>
                                     <td>{{ event.criticallity|event_criticality_badge }}</td>
-                                    <td>
-                                        {% if event.has_valid_target %}
-                                            {{ event.target_display }}
-                                        {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
                                     <td>{{ event.last_seen_at|date:"Y-m-d H:i" }}</td>
                                     <td>
                                         {% if event.event_source %}
                                             <a href="{{ event.event_source.get_absolute_url }}">{{ event.event_source.name }}</a>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if event.obj %}
+                                            <a href="{{ event.obj.get_absolute_url }}">{{ event.obj.name }}</a>
                                         {% else %}
                                             <span class="text-muted">-</span>
                                         {% endif %}
