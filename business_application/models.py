@@ -627,7 +627,7 @@ class Event(NetBoxModel):
         return self.is_valid and self.content_type and self.object_id
 
     @property
-    def is_valid(self):
+    def is_valid_event(self):
         """Check if this event is valid."""
         return self.has_valid_target and \
             self.criticallity in EventCrit.values() and \

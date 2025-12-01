@@ -229,7 +229,7 @@ class EventTable(NetBoxTable):
     is_valid = tables.TemplateColumn(
         template_code="""
         {% load helpers %}
-        {% if record.is_valid %}
+        {% if record.is_valid_event %}
             <span class="badge bg-success text-light"><i class="mdi mdi-check-circle"></i> Valid</span>
         {% else %}
             <span class="badge bg-danger text-light"><i class="mdi mdi-alert-circle"></i> Invalid</span>
