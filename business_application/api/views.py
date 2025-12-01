@@ -1665,12 +1665,12 @@ class AlertIngestionViewSet(ViewSet):
     def _map_severity_to_criticality(self, severity):
         """Map severity levels to Event criticallity choices (note the typo in field name)."""
         mapping = {
-            'critical': 'CRITICAL',
-            'high': 'HIGH',
-            'medium': 'MEDIUM',
-            'low': 'LOW'
+            'critical': 'critical',
+            'high': 'high',
+            'medium': 'medium',
+            'low': 'low'
         }
-        return mapping.get(severity.lower(), 'MEDIUM')
+        return mapping.get(severity.lower(), 'medium')
 
     def _map_capacitor_severity(self, priority):
         """Map Capacitor priority (1-5) to standard severity."""

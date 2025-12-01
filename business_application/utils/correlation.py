@@ -347,9 +347,14 @@ class AlertCorrelationEngine:
     ) -> bool:
         """
         Determine if an event should be correlated with an incident.
+        Only critical/high criticality with triggered/suppressed status.
         """
+        # Must be critical or high criticality
+        if event.criticallity not in ['critical', 'high']:
+            return False
 
-        if event.criticallity not in ['HIGH', 'CRITICAL']:
+        # Must be triggered or suppressed status
+        if event.status not in ['triggered', 'suppressed']:
             return False
 
         return True
@@ -357,6 +362,7 @@ class AlertCorrelationEngine:
     def _should_create_incident(self, event: Event) -> bool:
         """
         Determine if an event should trigger incident creation.
+        Only triggered events create NEW incidents.
         """
         if event.status != 'triggered':
             return False
@@ -373,16 +379,16 @@ class AlertCorrelationEngine:
         title = self._generate_incident_title(event, services)
 
         severity_map = {
-            'CRITICAL': 'critical',
-            'HIGH': 'high',
-            'MEDIUM': 'medium',
-            'LOW': 'low'
+            'critical': 'critical',
+            'high': 'high',
+            'medium': 'medium',
+            'low': 'low'
         }
 
         incident = Incident.objects.create(
             title=title,
             status='new',  # Use lowercase to match IncidentStatus.NEW
-            severity=severity_map.get(event.criticallity, 'medium'),  # Use lowercase to match IncidentSeverity
+            severity=severity_map.get(event.criticallity, 'high'),  # Use lowercase to match IncidentSeverity
             reporter='system',  # Events don't have reporter field, use system as default
             description=f"Incident created from alert: {event.message}"
         )
@@ -457,7 +463,13 @@ class AlertCorrelationEngine:
             self.logger.error(f"Error updating services and devices for incident {incident.id}: {e}")
 
         # Only escalate incident severity if event is more critical (never downgrade)
-        event_severity_map = {'OK': 'low', 'LOW': 'low', 'MEDIUM': 'medium', 'HIGH': 'high', 'CRITICAL': 'critical'}
+        # Event criticality and Incident severity now use the same values
+        event_severity_map = {
+            'critical': 'critical',
+            'high': 'high',
+            'medium': 'medium',
+            'low': 'low'
+        }
         severity_order = ['low', 'medium', 'high', 'critical']
         mapped_event_severity = event_severity_map.get(event.criticallity, 'medium')
 

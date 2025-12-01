@@ -584,12 +584,14 @@ class EventStatus(ChoiceSet):
 
 class EventCrit(ChoiceSet):
     CRITICAL = 'critical'
-    WARNING  = 'warning'
-    INFO     = 'info'
+    HIGH     = 'high'
+    MEDIUM   = 'medium'
+    LOW      = 'low'
     CHOICES = [
         (CRITICAL, 'Critical', 'red'),
-        (WARNING, 'Warning', 'orange'),
-        (INFO, 'Info', 'blue'),
+        (HIGH, 'High', 'orange'),
+        (MEDIUM, 'Medium', 'yellow'),
+        (LOW, 'Low', 'green'),
     ]
 
 class EventSource(NetBoxModel):        # reference catalog
