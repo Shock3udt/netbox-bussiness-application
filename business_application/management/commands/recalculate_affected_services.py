@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    help = 'Recalculate affected_services for existing incidents using downstream dependency logic'
+    help = 'Recalculate affected_services and affected_devices for existing incidents using dual discovery approach'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -47,25 +47,35 @@ class Command(BaseCommand):
         for incident in incidents:
             try:
                 current_services = set(incident.affected_services.all())
+                current_devices = set(incident.affected_devices.all())
 
                 new_services = set()
+                new_devices = set()
 
                 for event in incident.events.all():
                     if not event.obj:
                         continue
 
+                    # Calculate affected services
                     services = correlation_engine._find_technical_services(event.obj)
                     new_services.update(services)
 
+                    # Calculate affected devices using dual approach
+                    devices = correlation_engine._find_affected_devices(event.obj)
+                    new_devices.update(devices)
+
                 added_services = new_services - current_services
                 removed_services = current_services - new_services
+                added_devices = new_devices - current_devices
+                removed_devices = current_devices - new_devices
 
-                if added_services or removed_services:
+                if added_services or removed_services or added_devices or removed_devices:
                     self.stdout.write(
                         self.style.WARNING(f'\nIncident {incident.id}: {incident.title}')
                     )
+                    
+                    # Services changes
                     self.stdout.write(f'  Current services: {len(current_services)}')
-
                     if added_services:
                         self.stdout.write(
                             self.style.SUCCESS(f'  + Adding {len(added_services)} services:')
@@ -80,11 +90,30 @@ class Command(BaseCommand):
                         for service in removed_services:
                             self.stdout.write(f'    - {service.name}')
 
-                    self.stdout.write(f'  New total: {len(new_services)}')
+                    self.stdout.write(f'  New services total: {len(new_services)}')
+
+                    # Devices changes
+                    self.stdout.write(f'  Current devices: {len(current_devices)}')
+                    if added_devices:
+                        self.stdout.write(
+                            self.style.SUCCESS(f'  + Adding {len(added_devices)} devices:')
+                        )
+                        for device in added_devices:
+                            self.stdout.write(f'    + {device.name}')
+
+                    if removed_devices:
+                        self.stdout.write(
+                            self.style.ERROR(f'  - Removing {len(removed_devices)} devices:')
+                        )
+                        for device in removed_devices:
+                            self.stdout.write(f'    - {device.name}')
+
+                    self.stdout.write(f'  New devices total: {len(new_devices)}')
 
                     if not dry_run:
                         with transaction.atomic():
                             incident.affected_services.set(new_services)
+                            incident.affected_devices.set(new_devices)
                             self.stdout.write(
                                 self.style.SUCCESS(f'  ✓ Updated incident {incident.id}')
                             )
@@ -100,7 +129,7 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.ERROR(f'Error processing incident {incident.id}: {str(e)}')
                 )
-                logger.exception(f'Error recalculating services for incident {incident.id}')
+                logger.exception(f'Error recalculating resources for incident {incident.id}')
 
         self.stdout.write('\n' + '=' * 60)
         self.stdout.write(self.style.SUCCESS('\nSummary:'))

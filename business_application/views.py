@@ -3,6 +3,7 @@ from utilities.views import ViewTab, register_model_view
 from django.shortcuts import render, get_object_or_404
 from django.views.generic import TemplateView
 from django.db.models import Q
+from django.db import models
 from django.utils import timezone
 from datetime import datetime, timedelta
 from django.contrib.contenttypes.models import ContentType
@@ -484,6 +485,21 @@ class IncidentTimelineView(generic.ObjectView):
                 'icon': 'mdi-server-network',
                 'services': list(affected_services)
             })
+            
+        # Add affected devices information
+        affected_devices = obj.affected_devices.all()
+        if affected_devices:
+            timeline_entries.append({
+                'timestamp': obj.created_at,
+                'type': 'devices_affected',
+                'title': 'Affected Devices',
+                'description': f'{affected_devices.count()} device(s) affected by this incident',
+                'severity': obj.severity,
+                'status': obj.status,
+                'object': obj,
+                'icon': 'mdi-server-network',
+                'devices': list(affected_devices)
+            })
 
         # Add responders if any
         responders = obj.responders.all()
@@ -717,8 +733,12 @@ class BusinessApplicationIncidentsEventsView(generic.ObjectView):
 
         # Get incidents affecting services related to this business application
         related_services = obj.technical_services.all()
+        related_devices = obj.devices.all()
+        
+        # Find incidents affecting either services or devices related to this business application
         incidents = Incident.objects.filter(
-            affected_services__in=related_services
+            models.Q(affected_services__in=related_services) |
+            models.Q(affected_devices__in=related_devices)
         ).distinct().order_by('-created_at')
 
         # Get all events related to this business application's infrastructure
@@ -749,9 +769,12 @@ class BusinessApplicationIncidentsEventsView(generic.ObjectView):
 
         # Create timeline entries for incidents
         for incident in incidents:
-            # Find which services are affected
+            # Find which services and devices are affected
             affected_services = incident.affected_services.filter(
                 business_apps=obj
+            )
+            affected_devices = incident.affected_devices.filter(
+                business_applications=obj
             )
 
             timeline_entries.append({
@@ -763,7 +786,8 @@ class BusinessApplicationIncidentsEventsView(generic.ObjectView):
                 'status': incident.status,
                 'object': incident,
                 'icon': 'mdi-alert-multiple',
-                'affected_services': list(affected_services)
+                'affected_services': list(affected_services),
+                'affected_devices': list(affected_devices)
             })
 
             if incident.resolved_at:
@@ -776,7 +800,8 @@ class BusinessApplicationIncidentsEventsView(generic.ObjectView):
                     'status': 'resolved',
                     'object': incident,
                     'icon': 'mdi-check-circle',
-                    'affected_services': list(affected_services)
+                    'affected_services': list(affected_services),
+                    'affected_devices': list(affected_devices)
                 })
 
         # Create timeline entries for events
@@ -832,6 +857,10 @@ class BusinessApplicationIncidentsEventsView(generic.ObjectView):
             'critical_events': len([e for e in events if e.criticallity == 'CRITICAL']),
             'total_services': related_services.count(),
             'degraded_services': len([s for s in related_services if s.health_status in ['degraded', 'down', 'under_maintenance']]),
+            'total_devices': related_devices.count(),
+            'affected_devices_in_incidents': incidents.aggregate(
+                total_devices=models.Count('affected_devices', distinct=True)
+            )['total_devices'] or 0,
         }
 
         return render(
@@ -844,6 +873,7 @@ class BusinessApplicationIncidentsEventsView(generic.ObjectView):
                 'incidents': incidents,
                 'events': events[:20],  # Limit to 20 most recent events
                 'related_services': related_services,
+                'related_devices': related_devices,
                 'service_health_summary': service_health_summary,
                 'stats': stats,
             }
@@ -877,9 +907,10 @@ class DeviceEventsView(generic.ObjectView):
         # Get related technical services for this device
         related_services = obj.technical_services.all()
 
-        # Get incidents that affect services related to this device
+        # Get incidents that affect services related to this device OR directly affect this device
         related_incidents = Incident.objects.filter(
-            affected_services__in=related_services
+            models.Q(affected_services__in=related_services) |
+            models.Q(affected_devices=obj)
         ).distinct()
 
         # Create event timeline entries
@@ -918,6 +949,11 @@ class DeviceEventsView(generic.ObjectView):
         # Sort timeline entries by timestamp (newest first)
         timeline_entries.sort(key=lambda x: x['timestamp'], reverse=True)
 
+        # Get connected devices via cables (using correlation engine)
+        from business_application.utils.correlation import AlertCorrelationEngine
+        correlation_engine = AlertCorrelationEngine()
+        connected_devices = correlation_engine._find_devices_via_cables(obj)
+        
         # Get event statistics
         event_stats = {
             'total': events.count(),
@@ -927,6 +963,13 @@ class DeviceEventsView(generic.ObjectView):
             'critical': events.filter(criticallity='CRITICAL').count(),
             'warning': events.filter(criticallity='WARNING').count(),
             'info': events.filter(criticallity='INFO').count(),
+        }
+        
+        # Device dependency statistics
+        device_stats = {
+            'connected_devices': len(connected_devices),
+            'related_services': related_services.count(),
+            'related_incidents': related_incidents.count(),
         }
 
         return render(
@@ -939,7 +982,9 @@ class DeviceEventsView(generic.ObjectView):
                 'events': events,
                 'related_services': related_services,
                 'related_incidents': related_incidents,
+                'connected_devices': connected_devices,
                 'event_stats': event_stats,
+                'device_stats': device_stats,
             }
         )
 
@@ -1223,6 +1268,12 @@ class CalendarView(TemplateView):
                 business_apps__id__in=selected_apps
             ).values_list('id', flat=True)
             incidents_filter |= Q(affected_services__id__in=app_services)
+            
+            # Also filter incidents for devices related to selected business apps
+            app_devices = BusinessApplication.objects.filter(
+                id__in=selected_apps
+            ).values_list('devices', flat=True)
+            incidents_filter |= Q(affected_devices__id__in=app_devices)
 
             # Extend selected services with app services
             selected_services = list(set(selected_services) | set(app_services))
@@ -1258,6 +1309,12 @@ class CalendarView(TemplateView):
 
             # Filter incidents for selected technical services
             incidents_filter |= Q(affected_services__id__in=selected_services)
+            
+            # Also filter incidents for devices related to selected services
+            service_devices = TechnicalService.objects.filter(
+                id__in=selected_services
+            ).values_list('devices', flat=True)
+            incidents_filter |= Q(affected_devices__id__in=service_devices)
 
             # Filter maintenance/changes for technical services and their related objects
             service_devices = TechnicalService.objects.filter(

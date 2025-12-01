@@ -73,6 +73,21 @@
                         <td>{{ object.commander }}</td>
                     </tr>
                     {% endif %}
+                    <tr>
+                        <th scope="row">PagerDuty Integration</th>
+                        <td>
+                            {% if object.pagerduty_dedup_key %}
+                                <span class="badge bg-success">
+                                    <i class="mdi mdi-check-circle"></i> Synchronized
+                                </span>
+                                <br><small class="text-muted">Dedup Key: <code>{{ object.pagerduty_dedup_key }}</code></small>
+                            {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="mdi mdi-minus-circle"></i> Not Synchronized
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
                 </table>
             </div>
         </div>
@@ -113,7 +128,7 @@
                 {% if object.affected_services.exists %}
                     <div class="row">
                         {% for service in object.affected_services.all %}
-                            <div class="col-md-12 mb-2">
+                            <div class="col-auto mb-2">
                                 <a href="{{ service.get_absolute_url }}" class="badge bg-warning text-dark">
                                     <i class="mdi mdi-cog"></i> {{ service.name }}
                                 </a>
@@ -122,6 +137,29 @@
                     </div>
                 {% else %}
                     <p class="text-muted">No affected services</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                Affected Devices
+                <span class="badge bg-secondary ms-2 text-white">{{ object.affected_devices.count }}</span>
+            </h5>
+            <div class="card-body">
+                {% if object.affected_devices.exists %}
+                    <div class="row">
+                        {% for device in object.affected_devices.all %}
+                            <div class="col-auto mb-2">
+                                <a href="{{ device.get_absolute_url }}" class="badge bg-warning text-dark">
+                                    <i class="mdi mdi-server"></i> {{ device.name }}
+                                </a>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No affected devices</p>
                 {% endif %}
             </div>
         </div>
@@ -146,6 +184,8 @@
                                     <th>Criticality</th>
                                     <th>Last Seen</th>
                                     <th>Source</th>
+                                    <th>Target</th>
+
                                 </tr>
                             </thead>
                             <tbody>
@@ -158,6 +198,13 @@
                                     <td>
                                         {% if event.event_source %}
                                             <a href="{{ event.event_source.get_absolute_url }}">{{ event.event_source.name }}</a>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if event.obj %}
+                                            <a href="{{ event.obj.get_absolute_url }}">{{ event.obj.name }}</a>
                                         {% else %}
                                             <span class="text-muted">-</span>
                                         {% endif %}

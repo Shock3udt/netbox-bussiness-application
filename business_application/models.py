@@ -31,6 +31,14 @@ class BusinessApplication(NetBoxModel):
         blank=True
     )
 
+    pagerduty_routing_key = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        verbose_name='PagerDuty Routing Key',
+        help_text='PagerDuty Events API v2 routing key (integration key) for this application.'
+    )
+
     class Meta:
         ordering = ['appcode']
 
@@ -225,6 +233,14 @@ class TechnicalService(NetBoxModel):
         related_name='services_using_router_rule',
         limit_choices_to={'template_type': PagerDutyTemplateTypeChoices.ROUTER_RULE},
         help_text='PagerDuty router rule template'
+    )
+
+    pagerduty_routing_key = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        verbose_name='PagerDuty Routing Key',
+        help_text='PagerDuty Events API v2 routing key (integration key) for this service.'
     )
 
     class Meta:
@@ -451,6 +467,66 @@ class TechnicalService(NetBoxModel):
 
     def __str__(self):
         return self.name
+
+    def get_pagerduty_routing_key_with_source(self):
+        """
+        Get PagerDuty routing key by traversing up the service dependency hierarchy.
+
+        Algorithm:
+        1. Check if this service has a routing key
+        2. If not, find all upstream (parent) services
+        3. Recursively check parents until a routing key is found
+        4. Returns tuple of (routing_key, source_service_name) or (None, None)
+
+        This ensures that routing keys configured on "root" services
+        propagate down to all dependent services.
+        """
+        visited = set()
+
+        def find_routing_key_upstream(service):
+            """Recursively search upstream for routing key."""
+            if service.id in visited:
+                return None, None
+            visited.add(service.id)
+
+            # Check if this service has a routing key
+            if service.pagerduty_routing_key:
+                return service.pagerduty_routing_key, service.name
+
+            # Get upstream (parent) services and check them
+            # upstream_dependencies gives us ServiceDependency objects where this service is downstream
+            for dependency in service.upstream_dependencies.all():
+                upstream_service = dependency.upstream_service
+                routing_key, source = find_routing_key_upstream(upstream_service)
+                if routing_key:
+                    return routing_key, source
+
+            return None, None
+
+        return find_routing_key_upstream(self)
+
+    def get_root_services(self):
+        """
+        Get all root services (services with no upstream dependencies) in this service's hierarchy.
+        """
+        visited = set()
+        roots = set()
+
+        def find_roots(service):
+            if service.id in visited:
+                return
+            visited.add(service.id)
+
+            upstream_deps = service.upstream_dependencies.all()
+            if not upstream_deps.exists():
+                # This is a root service
+                roots.add(service)
+            else:
+                for dep in upstream_deps:
+                    find_roots(dep.upstream_service)
+
+        find_roots(self)
+        return list(roots)
 
 
 class ServiceDependency(NetBoxModel):
@@ -704,6 +780,14 @@ class Incident(NetBoxModel):
         blank=True,
         help_text='Technical services affected by this incident'
     )
+    
+    # Affected devices
+    affected_devices = models.ManyToManyField(
+        Device,
+        related_name='incidents',
+        blank=True,
+        help_text='Devices affected by this incident'
+    )
 
     # Related events
     events          = models.ManyToManyField(
@@ -716,6 +800,14 @@ class Incident(NetBoxModel):
     # Contact information
     reporter        = models.CharField(max_length=120, blank=True)
     commander       = models.CharField(max_length=120, blank=True, help_text='Incident commander')
+
+    # PagerDuty Integration
+    pagerduty_dedup_key = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text='PagerDuty deduplication key returned when incident was created'
+    )
 
     class Meta:
         ordering = ['-created_at']

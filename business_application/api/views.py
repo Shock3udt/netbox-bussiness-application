@@ -28,7 +28,7 @@ from business_application.api.serializers import (
     SignalFXAlertSerializer,
     EmailAlertSerializer,
     GitLabSerializer,
-    PagerDutyTemplateSerializer
+    PagerDutyTemplateSerializer,
     ExternalWorkflowSerializer,
     WorkflowExecutionSerializer
 )
@@ -497,7 +497,7 @@ class IncidentViewSet(ModelViewSet):
             # Use the correlation engine to calculate blast radius
             from ..utils.correlation import AlertCorrelationEngine
             correlation_engine = AlertCorrelationEngine()
-            affected_services = correlation_engine.calculate_blast_radius(incident)
+            affected_services, affected_devices = correlation_engine.calculate_blast_radius(incident)
 
             # Serialize the services
             service_data = []
@@ -509,11 +509,21 @@ class IncidentViewSet(ModelViewSet):
                     'health_status': service.health_status
                 })
 
+            device_data = []
+            for device in affected_devices:
+                device_data.append({
+                    'id': device.id,
+                    'name': device.name,
+                    'device_type': str(device.device_type) if device.device_type else 'unknown',
+                })
+
             return Response({
                 'incident_id': incident.id,
                 'incident_title': incident.title,
                 'affected_services_count': len(affected_services),
-                'affected_services': service_data
+                'affected_services': service_data,
+                'affected_devices_count': len(affected_devices),
+                'affected_devices': device_data
             })
 
         except Exception as e:
@@ -618,7 +628,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
     def execute_workflow(self, request, pk=None):
         """
         Execute a workflow against a specific object.
-        
+
         Expected payload:
         {
             "object_type": "device|incident|event",
@@ -693,7 +703,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
 
             # Execute based on workflow type
             execution_result = None
-            
+
             try:
                 if workflow.workflow_type == 'aap':
                     # Execute AAP workflow/job
@@ -747,7 +757,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
     def _execute_aap_workflow(self, workflow, params, source_obj):
         """Execute an AAP workflow or job template"""
         from requests.auth import HTTPBasicAuth
-        
+
         try:
             # Get AAP configuration
             aap_auth_type = external_workflow_config.AAP_AUTH_TYPE
@@ -759,7 +769,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
 
             # Use workflow-specific URL or fall back to default
             aap_url = workflow.aap_url or external_workflow_config.AAP_DEFAULT_URL
-            
+
             if not aap_url:
                 return {
                     'success': False,
@@ -776,14 +786,14 @@ class ExternalWorkflowViewSet(ModelViewSet):
 
             # Build payload
             payload = {}
-            
+
             # Add extra_vars if present in mapped params
             if 'extra_vars' in params:
                 payload['extra_vars'] = params['extra_vars']
             elif params:
                 # If no explicit extra_vars, use all params as extra_vars
                 payload['extra_vars'] = params
-            
+
             # Add limit if present
             if 'limit' in params:
                 payload['limit'] = params['limit']
@@ -794,7 +804,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
             # Determine authentication method
             auth = None
             headers = {'Content-Type': 'application/json'}
-            
+
             if aap_auth_type == 'basic':
                 # Basic authentication
                 if not aap_username or not aap_password:
@@ -841,7 +851,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
                 verify=verify_ssl,
                 timeout=timeout
             )
-            
+
             if response.status_code in [200, 201, 202]:
                 data = response.json()
                 job_id = data.get('id') or data.get('job') or data.get('workflow_job')
@@ -902,9 +912,9 @@ class ExternalWorkflowViewSet(ModelViewSet):
             n8n_api_key = external_workflow_config.N8N_API_KEY
             verify_ssl = external_workflow_config.N8N_VERIFY_SSL
             timeout = external_workflow_config.N8N_TIMEOUT
-            
+
             webhook_url = workflow.n8n_webhook_url
-            
+
             if not webhook_url:
                 return {
                     'success': False,
@@ -928,7 +938,7 @@ class ExternalWorkflowViewSet(ModelViewSet):
 
             # Build headers
             headers = {'Content-Type': 'application/json'}
-            
+
             # Add API key if configured (for authenticated webhooks)
             if n8n_api_key:
                 headers['X-N8N-API-KEY'] = n8n_api_key
@@ -941,16 +951,16 @@ class ExternalWorkflowViewSet(ModelViewSet):
                 verify=verify_ssl,
                 timeout=timeout
             )
-            
+
             if response.status_code in [200, 201, 202]:
                 # Try to parse response as JSON, fall back to text
                 try:
                     response_data = response.json()
                 except ValueError:
                     response_data = {'response_text': response.text[:500] if response.text else 'No response body'}
-                
+
                 execution_id = response.headers.get('X-Execution-Id') or response.headers.get('X-N8N-Execution-Id')
-                
+
                 return {
                     'success': True,
                     'message': 'N8N webhook triggered successfully',

@@ -5,9 +5,9 @@ class ExternalWorkflowConfig:
     """
     Configuration settings for external workflow integrations (AAP/N8N).
     These can be overridden in Django settings via PLUGINS_CONFIG.
-    
+
     Example configuration in NetBox's configuration.py:
-    
+
     PLUGINS_CONFIG = {
         'business_application': {
             # AAP Settings
@@ -18,13 +18,13 @@ class ExternalWorkflowConfig:
             'aap_token': 'your-aap-oauth-token',  # For token auth
             'aap_verify_ssl': True,
             'aap_timeout': 30,
-            
+
             # N8N Settings
             'n8n_default_url': 'https://n8n.example.com',
-            'n8n_api_key': 'your-n8n-api-key',
+            'n8n_api_key': '',
             'n8n_verify_ssl': True,
             'n8n_timeout': 30,
-            
+
             'workflow_execution_enabled': True,
         }
     }

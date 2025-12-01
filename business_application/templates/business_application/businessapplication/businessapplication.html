@@ -4,6 +4,7 @@
 {% load helpers %}
 {% load plugins %}
 {% load render_table from django_tables2 %}
+{% load pagerduty_filters %}
 
 {% block breadcrumbs %}
 <li class="breadcrumb-item"><a href="{% url 'plugins:business_application:businessapplication_list' %}">Business Applications</a></li>
@@ -65,6 +66,51 @@
                 </table>
             </div>
         </div>
+
+        <!-- PagerDuty Integration Card -->
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-bell-alert"></i> PagerDuty Integration
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
+                    <tr>
+                        <td>Routing Key</td>
+                        <td>
+                            {% if object.pagerduty_routing_key %}
+                                <code class="text-success">
+                                    <i class="mdi mdi-key"></i>
+                                    {{ object.pagerduty_routing_key|mask_routing_key }}
+                                </code>
+                            {% else %}
+                                <span class="text-muted">
+                                    <i class="mdi mdi-key-remove"></i> Not configured
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Status</td>
+                        <td>
+                            {% if object.pagerduty_routing_key %}
+                                <span class="badge bg-success">
+                                    <i class="mdi mdi-check-circle"></i> Configured
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="mdi mdi-minus"></i> Not Configured
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+                <small class="text-muted">
+                    <i class="mdi mdi-information-outline"></i>
+                    Routing key is used as fallback for Technical Services without own key.
+                </small>
+            </div>
+        </div>
+
         {% include 'inc/panels/custom_fields.html' %}
         {% include 'inc/panels/tags.html' %}
         {% include 'inc/panels/comments.html' %}
