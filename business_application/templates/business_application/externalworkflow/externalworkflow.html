@@ -52,6 +52,8 @@
                         <td>
                             {% if object.object_type == "device" %}
                                 <span class="badge bg-info"><i class="mdi mdi-server"></i> Device</span>
+                            {% elif object.object_type == "interface" %}
+                                <span class="badge bg-cyan"><i class="mdi mdi-ethernet"></i> Interface</span>
                             {% elif object.object_type == "incident" %}
                                 <span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Incident</span>
                             {% elif object.object_type == "event" %}
@@ -194,7 +196,7 @@
             </h5>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <h6><i class="mdi mdi-server"></i> Device Attributes</h6>
                         <ul class="list-unstyled">
                             <li><code>object.name</code> - Device name</li>
@@ -206,7 +208,19 @@
                             <li><code>object.status</code> - Device status</li>
                         </ul>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
+                        <h6><i class="mdi mdi-ethernet"></i> Interface Attributes</h6>
+                        <ul class="list-unstyled">
+                            <li><code>object.name</code> - Interface name</li>
+                            <li><code>object.device.name</code> - Parent device name</li>
+                            <li><code>object.type</code> - Interface type</li>
+                            <li><code>object.enabled</code> - Enabled status</li>
+                            <li><code>object.mac_address</code> - MAC address</li>
+                            <li><code>object.mtu</code> - MTU</li>
+                            <li><code>object.description</code> - Description</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-3">
                         <h6><i class="mdi mdi-alert-circle"></i> Incident Attributes</h6>
                         <ul class="list-unstyled">
                             <li><code>object.title</code> - Incident title</li>
@@ -217,7 +231,7 @@
                             <li><code>object.created_at</code> - Creation time</li>
                         </ul>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <h6><i class="mdi mdi-bell-ring"></i> Event Attributes</h6>
                         <ul class="list-unstyled">
                             <li><code>object.message</code> - Event message</li>
