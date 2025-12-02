@@ -2,13 +2,12 @@ from rest_framework import serializers
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow,
-    WorkflowExecution, EventCrit, EventStatus
+    WorkflowExecution
 )
 from dcim.models import Device
 from virtualization.models import VirtualMachine
 from django.utils import timezone
 from django.db import models
-from django.db.models import Q
 from datetime import datetime, timedelta
 
 
@@ -393,21 +392,10 @@ class IncidentSerializer(serializers.ModelSerializer):
     """
     Serializer for the Incident model.
     """
-    responders_count = serializers.IntegerField(source='responders.count', read_only=True)
-    affected_services_count = serializers.IntegerField(source='affected_services.count', read_only=True)
-    affected_devices_count = serializers.IntegerField(source='affected_devices.count', read_only=True)
-    events_count = serializers.IntegerField(source='events.count', read_only=True)
-
-    # Enhanced: Add automation insights
     affected_services = serializers.SerializerMethodField(read_only=True)
     affected_devices = serializers.SerializerMethodField(read_only=True)
-    event_sources = serializers.SerializerMethodField(read_only=True)
-    correlation_window = serializers.SerializerMethodField(read_only=True)
-    blast_radius = serializers.SerializerMethodField(read_only=True)
-    duration_minutes = serializers.SerializerMethodField(read_only=True)
-    auto_created = serializers.SerializerMethodField(read_only=True)
-    recent_context_events = serializers.SerializerMethodField(read_only=True)
-    device_discovery_metadata = serializers.SerializerMethodField(read_only=True)
+    affected_business_applications = serializers.SerializerMethodField(read_only=True)
+    events = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Incident
@@ -421,164 +409,50 @@ class IncidentSerializer(serializers.ModelSerializer):
             'updated_at',
             'detected_at',
             'resolved_at',
-            'responders_count',
-            'affected_services_count',
-            'affected_devices_count',
-            'events_count',
             'affected_services',
             'affected_devices',
-            'event_sources',
-            'correlation_window',
-            'blast_radius',
-            'duration_minutes',
-            'auto_created',
-            'recent_context_events',
-            'device_discovery_metadata',
-            'reporter',
-            'commander',
-            'pagerduty_dedup_key',
-            'created',
-            'last_updated',
+            'affected_business_applications',
+            'events',
         ]
 
     def get_affected_services(self, obj):
-        """Detailed information about affected services."""
+        """Information about affected services."""
         return [
             {
                 'id': service.id,
                 'name': service.name,
                 'service_type': service.service_type,
-                'health_status': getattr(service, 'health_status', 'unknown')
             }
             for service in obj.affected_services.all()
         ]
 
     def get_affected_devices(self, obj):
-        """Detailed information about affected devices."""
+        """Information about affected devices."""
         return [
             {
                 'id': device.id,
                 'name': device.name,
-                'device_type': str(device.device_type) if device.device_type else 'unknown',
-                'status': device.status if hasattr(device, 'status') else 'unknown',
-                'site': device.site.name if device.site else None,
-                'rack': device.rack.name if device.rack else None
             }
             for device in obj.affected_devices.all()
         ]
 
-    def get_event_sources(self, obj):
-        """Unique event sources that contributed to this incident."""
-        sources = obj.events.filter(event_source__isnull=False).values_list(
-            'event_source__name', flat=True
-        ).distinct()
-        return list(sources)
+    def get_affected_business_applications(self, obj):
+        """Business applications affected via the incident's affected services."""
+        business_apps = set()
+        for service in obj.affected_services.all():
+            for app in service.business_apps.all():
+                business_apps.add(app)
+        return [
+            {
+                'id': app.id,
+                'appcode': app.appcode,
+                'name': app.name,
+            }
+            for app in business_apps
+        ]
 
-    def get_correlation_window(self, obj):
-        """Time window over which events were correlated into this incident."""
-        if obj.events.count() <= 1:
-            return 0
-
-        first_event = obj.events.order_by('created_at').first()
-        last_event = obj.events.order_by('-created_at').first()
-
-        if first_event and last_event:
-            delta = last_event.created_at - first_event.created_at
-            return int(delta.total_seconds() / 60)  # minutes
-        return 0
-
-    def get_blast_radius(self, obj):
-        """Estimated blast radius based on affected services, devices and their dependencies."""
-        affected_services = obj.affected_services.all()
-        affected_devices = obj.affected_devices.all()
-
-        downstream_count = 0
-        business_apps_count = 0
-        connected_devices_count = 0
-
-        for service in affected_services:
-            downstream_count += service.get_downstream_dependencies().count()
-            business_apps_count += service.business_apps.count()
-
-        # Estimate connected devices via cable connections
-        try:
-            from business_application.utils.correlation import AlertCorrelationEngine
-            correlation_engine = AlertCorrelationEngine()
-
-            for device in affected_devices:
-                try:
-                    if hasattr(correlation_engine, '_find_devices_via_cables'):
-                        connected_devices = getattr(correlation_engine, '_find_devices_via_cables')(device)
-                        connected_devices_count += len(connected_devices)
-                except Exception:
-                    pass  # Ignore errors in blast radius calculation
-        except ImportError:
-            # Handle circular import gracefully
-            pass
-
-        return {
-            'affected_services': affected_services.count(),
-            'affected_devices': affected_devices.count(),
-            'potential_downstream_services': downstream_count,
-            'potential_connected_devices': connected_devices_count,
-            'affected_business_applications': business_apps_count
-        }
-
-    def get_duration_minutes(self, obj):
-        """Duration of the incident in minutes."""
-        end_time = obj.resolved_at or timezone.now()
-        start_time = obj.detected_at or obj.created_at
-
-        delta = end_time - start_time
-        return int(delta.total_seconds() / 60)
-
-    def get_auto_created(self, obj):
-        """Whether this incident was automatically created."""
-        return obj.reporter == "Auto-Incident System"
-
-    def get_recent_context_events(self, obj):
-        """
-        Get last 20 non-incident events from devices affected by this incident.
-        These provide context but are not assigned to the incident.
-        """
-        from django.contrib.contenttypes.models import ContentType
-        from django.db.models import Q
-        from dcim.models import Device
-        from virtualization.models import VirtualMachine
-        from business_application.models import TechnicalService, Event, EventCrit, EventStatus
-
-        context_events = []
-
-        if obj.affected_services.exists():
-            # Get all devices, VMs, and services using Django ORM (database-level query)
-            device_ids = Device.objects.filter(
-                technical_services__in=obj.affected_services.all()
-            ).values_list('id', flat=True)
-
-            vm_ids = VirtualMachine.objects.filter(
-                technical_services__in=obj.affected_services.all()
-            ).values_list('id', flat=True)
-
-            service_ids = obj.affected_services.values_list('id', flat=True)
-
-            if device_ids or vm_ids or service_ids:
-                device_ct = ContentType.objects.get_for_model(Device)
-                vm_ct = ContentType.objects.get_for_model(VirtualMachine)
-                service_ct = ContentType.objects.get_for_model(TechnicalService)
-
-                context_events = Event.objects.filter(
-                    (
-                        ~Q(criticallity__in=[EventCrit.CRITICAL, EventCrit.HIGH]) |
-                        Q(status=EventStatus.OK)
-                    ) & (
-                        Q(content_type=device_ct, object_id__in=device_ids) |
-                        Q(content_type=vm_ct, object_id__in=vm_ids) |
-                        Q(content_type=service_ct, object_id__in=service_ids)
-                    )
-                ).exclude(
-                    incidents=obj
-                ).order_by('-last_seen_at')[:20]
-
+    def get_events(self, obj):
+        """Events assigned to this incident."""
         return [
             {
                 'id': event.id,
@@ -586,45 +460,9 @@ class IncidentSerializer(serializers.ModelSerializer):
                 'status': event.status,
                 'criticallity': event.criticallity,
                 'last_seen_at': event.last_seen_at,
-                'target_display': event.target_display if hasattr(event, 'target_display') else str(event.content_type) if event.content_type else 'Unknown',
-                'event_source_name': event.event_source.name if event.event_source else 'Unknown',
             }
-            for event in context_events
+            for event in obj.events.all()
         ]
-    def get_device_discovery_metadata(self, obj):
-        """Metadata about how devices were discovered as affected."""
-        affected_devices = obj.affected_devices.all()
-
-        if not affected_devices:
-            return {
-                'total_devices': 0,
-                'discovery_methods': []
-            }
-
-        # For each device, determine how it was likely discovered
-        discovery_methods = []
-        service_based_count = 0
-        cable_based_count = 0
-
-        for device in affected_devices:
-            # Check if device is associated with any affected services (service-based discovery)
-            device_services = device.technical_services.all()
-            affected_services = obj.affected_services.all()
-
-            if any(service in affected_services for service in device_services):
-                service_based_count += 1
-                discovery_methods.append('service-based')
-            else:
-                # Likely discovered via cable connections
-                cable_based_count += 1
-                discovery_methods.append('cable-based')
-
-        return {
-            'total_devices': len(affected_devices),
-            'service_based_devices': service_based_count,
-            'cable_based_devices': cable_based_count,
-            'discovery_methods': list(set(discovery_methods))  # Unique methods
-        }
 
 
 class PagerDutyTemplateSerializer(serializers.ModelSerializer):
@@ -752,11 +590,11 @@ class GenericAlertSerializer(serializers.Serializer):
     def validate_severity(self, value):
         """Validate alert severities."""
         valid_severities = {'cri': 'critical', 'hig': 'high', 'med': 'medium', 'low': 'low', 'war': 'medium'}
-        if value.lower()[:3] not in valid_severities:
+        if value.lower() not in valid_severities:
             raise serializers.ValidationError(
-                f"severity must be one of {list(valid_severities.keys())}"
+                f"severity must be one of {valid_severities}"
             )
-        return valid_severities[value.lower()[:3]]
+        return value.lower()
 
     def validate_dedup_id(self, value):
         """Ensure dedup_id is unique enough."""
