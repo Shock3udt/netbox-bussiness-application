@@ -81,8 +81,8 @@
                 <i class="mdi mdi-text-box-outline"></i> Description
             </h5>
             <div class="card-body">
-                <div class="rendered-markdown">
-                    {{ object.description|render_markdown }}
+                <div class="incident-description">
+                    {{ object.description|safe }}
                 </div>
             </div>
         </div>
