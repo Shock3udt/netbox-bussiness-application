@@ -18,12 +18,6 @@
                         <th scope="row">Title</th>
                         <td>{{ object.title }}</td>
                     </tr>
-                    {% if object.description %}
-                    <tr>
-                        <th scope="row">Description</th>
-                        <td>{{ object.description|linebreaksbr }}</td>
-                    </tr>
-                    {% endif %}
                     <tr>
                         <th scope="row">Status</th>
                         <td>{{ object.status|incident_status_badge }}</td>
@@ -93,6 +87,23 @@
         </div>
     </div>
 </div>
+
+{% if object.description %}
+<div class="row mt-3">
+    <div class="col-md-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-text-box-outline"></i> Description
+            </h5>
+            <div class="card-body">
+                <div class="rendered-markdown">
+                    {{ object.description|render_markdown }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="row mt-3">
     <div class="col-md-6">
