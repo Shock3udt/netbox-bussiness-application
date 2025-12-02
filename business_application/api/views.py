@@ -1405,6 +1405,44 @@ class AlertIngestionViewSet(ViewSet):
             logger.info(f"Created new event {event.id} for {target_info}")
             return event
 
+    def _normalize_device_identifier(self, identifier):
+        """
+        Generate a list of identifier variants to try for flexible device matching.
+        Handles:
+        - Original identifier
+        - With .redhat.com domain removed
+        - With (0), (1), etc. suffix removed
+        - Combinations of both
+        """
+        import re
+        
+        variants = [identifier]
+        
+        # Strip .redhat.com domain
+        if identifier.endswith('.redhat.com'):
+            domain_stripped = identifier[:-len('.redhat.com')]
+            variants.append(domain_stripped)
+        
+        # Strip (N) suffix pattern - e.g., "sw01-leaf.site(0)" -> "sw01-leaf.site"
+        parenthesis_pattern = re.compile(r'\(\d+\)$')
+        
+        for variant in list(variants):  # iterate over a copy
+            match = parenthesis_pattern.search(variant)
+            if match:
+                stripped = parenthesis_pattern.sub('', variant)
+                if stripped not in variants:
+                    variants.append(stripped)
+        
+        # Also try adding (0) to match entries that have it in NetBox
+        for variant in list(variants):
+            with_zero = f"{variant}(0)"
+            if with_zero not in variants:
+                variants.append(with_zero)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        return [v for v in variants if not (v in seen or seen.add(v))]
+
     def _resolve_target(self, target_data):
         """
         Resolve target object from target data.
@@ -1422,9 +1460,16 @@ class AlertIngestionViewSet(ViewSet):
 
             if target_type == 'device':
                 from dcim.models import Device
-                target_obj = Device.objects.filter(name=identifier).first()
-                if target_obj:
-                    return target_obj, ContentType.objects.get_for_model(Device)
+                # Use flexible matching for devices
+                identifier_variants = self._normalize_device_identifier(identifier)
+                logger.debug(f"Trying device identifier variants for '{identifier}': {identifier_variants}")
+                
+                for variant in identifier_variants:
+                    target_obj = Device.objects.filter(name=variant).first()
+                    if target_obj:
+                        if variant != identifier:
+                            logger.info(f"Matched device '{identifier}' using variant '{variant}'")
+                        return target_obj, ContentType.objects.get_for_model(Device)
 
             elif target_type == 'vm':
                 from virtualization.models import VirtualMachine

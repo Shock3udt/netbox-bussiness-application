@@ -52,6 +52,8 @@
                         <td>
                             {% if object.object_type == "device" %}
                                 <span class="badge bg-info"><i class="mdi mdi-server"></i> Device</span>
+                            {% elif object.object_type == "interface" %}
+                                <span class="badge bg-cyan"><i class="mdi mdi-ethernet"></i> Interface</span>
                             {% elif object.object_type == "incident" %}
                                 <span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Incident</span>
                             {% elif object.object_type == "event" %}
@@ -170,6 +172,7 @@
                             {% elif object.workflow_type == "n8n" %}
                                 This mapping defines how object attributes are mapped to N8N webhook payload fields.
                             {% endif %}
+                            Supports native Jinja2 templating with <code>&#123;&#123; object.attribute &#125;&#125;</code> syntax.
                         </p>
                     </div>
                     <div class="card bg-light">
@@ -194,7 +197,7 @@
             </h5>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <h6><i class="mdi mdi-server"></i> Device Attributes</h6>
                         <ul class="list-unstyled">
                             <li><code>object.name</code> - Device name</li>
@@ -206,7 +209,19 @@
                             <li><code>object.status</code> - Device status</li>
                         </ul>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
+                        <h6><i class="mdi mdi-ethernet"></i> Interface Attributes</h6>
+                        <ul class="list-unstyled">
+                            <li><code>object.name</code> - Interface name</li>
+                            <li><code>object.device.name</code> - Parent device name</li>
+                            <li><code>object.type</code> - Interface type</li>
+                            <li><code>object.enabled</code> - Enabled status</li>
+                            <li><code>object.mac_address</code> - MAC address</li>
+                            <li><code>object.mtu</code> - MTU</li>
+                            <li><code>object.description</code> - Description</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-3">
                         <h6><i class="mdi mdi-alert-circle"></i> Incident Attributes</h6>
                         <ul class="list-unstyled">
                             <li><code>object.title</code> - Incident title</li>
@@ -217,7 +232,7 @@
                             <li><code>object.created_at</code> - Creation time</li>
                         </ul>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <h6><i class="mdi mdi-bell-ring"></i> Event Attributes</h6>
                         <ul class="list-unstyled">
                             <li><code>object.message</code> - Event message</li>
@@ -227,6 +242,75 @@
                             <li><code>object.event_source.name</code> - Event source</li>
                             <li><code>object.created_at</code> - Creation time</li>
                         </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Jinja2 Templating -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-code-braces"></i> Jinja2 Templating
+            </h5>
+            <div class="card-body">
+                <p class="text-muted">
+                    Attribute mappings support native Jinja2 templating syntax.
+                    Use <code>&#123;&#123; object.attribute &#125;&#125;</code> for variable substitution and <code>&#123;% %&#125;</code> for control structures.
+                </p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Syntax Examples</h6>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Pattern</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>&#123;&#123; object.name &#125;&#125;</code></td>
+                                    <td>Variable: Single attribute replacement</td>
+                                </tr>
+                                <tr>
+                                    <td><code>set interface &#123;&#123; object.name &#125;&#125; disable</code></td>
+                                    <td>Mixed: Text with embedded variable</td>
+                                </tr>
+                                <tr>
+                                    <td><code>&#123;&#123; object.device.name &#125;&#125;</code></td>
+                                    <td>Nested: Access related object attributes</td>
+                                </tr>
+                                <tr>
+                                    <td><code>&#123;&#123; object.name | upper &#125;&#125;</code></td>
+                                    <td>Filters: Apply Jinja2 filters</td>
+                                </tr>
+                                <tr>
+                                    <td><code>&#123;% if object.enabled %&#125;up&#123;% else %&#125;down&#123;% endif %&#125;</code></td>
+                                    <td>Conditionals: Logic in templates</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>AAP Example Configuration</h6>
+                        <div class="card bg-light">
+                            <div class="card-body p-2">
+<pre class="mb-0" style="font-size: 0.8em;">{
+  "limit": "{{ object.device.name }}",
+  "extra_vars": {
+    "interface_name": "{{ object.name }}",
+    "user_command": [
+      "set poe interface {{ object.name }} disable",
+      "set interfaces {{ object.name }} disable"
+    ]
+  }
+}</pre>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

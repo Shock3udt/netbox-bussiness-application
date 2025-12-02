@@ -41,6 +41,15 @@ def auto_create_incident_from_event(sender, instance, created, **kwargs):
         return
 
     if instance.status != EventStatus.TRIGGERED:
+        if instance.status == EventStatus.OK:
+            # Check if all events for any related incident are resolved,
+            # if so, set the incident status to "monitoring"
+            for incident in instance.incidents.all():
+                all_ok = not incident.events.exclude(status=EventStatus.OK).exists()
+                if all_ok and incident.status != 'monitoring':
+                    incident.status = 'monitoring'
+                    incident.save(update_fields=['status'])
+            return
         return
 
     if instance.incidents.exists():

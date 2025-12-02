@@ -627,6 +627,13 @@ class Event(NetBoxModel):
         return self.is_valid and self.content_type and self.object_id
 
     @property
+    def is_valid_event(self):
+        """Check if this event is valid."""
+        return self.has_valid_target and \
+            self.criticallity in EventCrit.values() and \
+            self.status in EventStatus.values()
+
+    @property
     def target_display(self):
         """Get a display string for the target object."""
         if not self.has_valid_target:
@@ -746,11 +753,13 @@ class AAPResourceType(ChoiceSet):
 class ExternalWorkflowObjectType(ChoiceSet):
     """Object types that can trigger external workflows"""
     DEVICE = 'device'
+    INTERFACE = 'interface'
     INCIDENT = 'incident'
     EVENT = 'event'
 
     CHOICES = [
         (DEVICE, 'Device', 'blue'),
+        (INTERFACE, 'Interface', 'cyan'),
         (INCIDENT, 'Incident', 'red'),
         (EVENT, 'Event', 'orange'),
     ]
@@ -780,7 +789,7 @@ class Incident(NetBoxModel):
         blank=True,
         help_text='Technical services affected by this incident'
     )
-    
+
     # Affected devices
     affected_devices = models.ManyToManyField(
         Device,
@@ -945,52 +954,59 @@ class ExternalWorkflow(NetBoxModel):
     def get_mapped_parameters(self, obj):
         """
         Generate parameters for workflow execution based on attribute mapping.
+        Uses native Jinja2 templating for flexible value formatting.
 
         Args:
-            obj: The source object (Device, Incident, or Event)
+            obj: The source object (Device, Interface, Incident, or Event)
 
         Returns:
             dict: Parameters ready for workflow execution
+
+        Examples:
+            Template string: "{{ object.device.name }}" → device name
+            Mixed string: "set interface {{ object.name }} disable" → formatted command
+            Arrays: ["cmd1 {{ object.name }}", "cmd2"] → list of formatted strings
+            Jinja2 features: "{% if object.enabled %}up{% else %}down{% endif %}"
         """
         if not self.attribute_mapping:
             return {}
 
-        def resolve_attribute(obj, path):
-            """Resolve a dotted attribute path on an object"""
-            parts = path.split('.')
-            value = obj
-            for part in parts:
-                if hasattr(value, part):
-                    value = getattr(value, part)
-                    # Handle callable attributes (like methods)
-                    if callable(value):
-                        value = value()
-                elif isinstance(value, dict) and part in value:
-                    value = value[part]
-                else:
-                    return None
-            return value
+        from jinja2 import Environment, BaseLoader
 
-        result = {}
-        for key, mapping in self.attribute_mapping.items():
-            if isinstance(mapping, str):
-                # Direct attribute mapping
-                if mapping.startswith('object.'):
-                    attr_path = mapping[7:]  # Remove 'object.' prefix
-                    result[key] = resolve_attribute(obj, attr_path)
-                else:
-                    result[key] = mapping
-            elif isinstance(mapping, dict):
-                # Nested mapping (e.g., for AAP extra_vars)
-                result[key] = {}
-                for sub_key, sub_mapping in mapping.items():
-                    if isinstance(sub_mapping, str) and sub_mapping.startswith('object.'):
-                        attr_path = sub_mapping[7:]
-                        result[key][sub_key] = resolve_attribute(obj, attr_path)
-                    else:
-                        result[key][sub_key] = sub_mapping
+        env = Environment(loader=BaseLoader(), autoescape=False)
+
+        def render_template_string(template_str, context):
+            """Render a string using Jinja2 templating."""
+            if not isinstance(template_str, str):
+                return template_str
+
+            # Only process if it contains Jinja2 template syntax
+            if '{{' in template_str or '{%' in template_str:
+                try:
+                    template = env.from_string(template_str)
+                    return template.render(**context)
+                except Exception:
+                    # Return original string if rendering fails
+                    return template_str
+
+            return template_str
+
+        def process_value(value, context):
+            """Recursively process a value, rendering any template strings."""
+            if isinstance(value, str):
+                return render_template_string(value, context)
+            elif isinstance(value, list):
+                return [process_value(item, context) for item in value]
+            elif isinstance(value, dict):
+                return {k: process_value(v, context) for k, v in value.items()}
             else:
-                result[key] = mapping
+                return value
+
+        # Build context for Jinja2 templates
+        context = {'object': obj}
+
+        # Process the entire attribute mapping recursively
+        result = process_value(self.attribute_mapping, context)
 
         return result
 
@@ -1026,7 +1042,7 @@ class WorkflowExecution(NetBoxModel):
         related_name='executions',
         help_text='The workflow that was executed'
     )
-    
+
     # Who triggered the execution
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1036,7 +1052,7 @@ class WorkflowExecution(NetBoxModel):
         related_name='workflow_executions',
         help_text='User who triggered the execution'
     )
-    
+
     # What object triggered it (polymorphic)
     content_type = models.ForeignKey(
         ContentType,
@@ -1047,7 +1063,7 @@ class WorkflowExecution(NetBoxModel):
         help_text='ID of the source object'
     )
     source_object = GenericForeignKey('content_type', 'object_id')
-    
+
     # Execution details
     status = models.CharField(
         max_length=20,
@@ -1055,7 +1071,7 @@ class WorkflowExecution(NetBoxModel):
         default=WorkflowExecutionStatus.PENDING,
         help_text='Current status of the execution'
     )
-    
+
     # Timestamps
     started_at = models.DateTimeField(
         auto_now_add=True,
@@ -1066,7 +1082,7 @@ class WorkflowExecution(NetBoxModel):
         blank=True,
         help_text='When the execution completed'
     )
-    
+
     # Request/Response data
     parameters_sent = models.JSONField(
         default=dict,

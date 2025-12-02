@@ -30,7 +30,7 @@ from .filtersets import (
 )
 from django.http import JsonResponse
 from django.urls import reverse
-from dcim.models import Device
+from dcim.models import Device, Interface
 from virtualization.models import VirtualMachine, Cluster
 
 # BusinessApplication Views
@@ -485,7 +485,7 @@ class IncidentTimelineView(generic.ObjectView):
                 'icon': 'mdi-server-network',
                 'services': list(affected_services)
             })
-            
+
         # Add affected devices information
         affected_devices = obj.affected_devices.all()
         if affected_devices:
@@ -734,7 +734,7 @@ class BusinessApplicationIncidentsEventsView(generic.ObjectView):
         # Get incidents affecting services related to this business application
         related_services = obj.technical_services.all()
         related_devices = obj.devices.all()
-        
+
         # Find incidents affecting either services or devices related to this business application
         incidents = Incident.objects.filter(
             models.Q(affected_services__in=related_services) |
@@ -953,7 +953,7 @@ class DeviceEventsView(generic.ObjectView):
         from business_application.utils.correlation import AlertCorrelationEngine
         correlation_engine = AlertCorrelationEngine()
         connected_devices = correlation_engine._find_devices_via_cables(obj)
-        
+
         # Get event statistics
         event_stats = {
             'total': events.count(),
@@ -964,7 +964,7 @@ class DeviceEventsView(generic.ObjectView):
             'warning': events.filter(criticallity='WARNING').count(),
             'info': events.filter(criticallity='INFO').count(),
         }
-        
+
         # Device dependency statistics
         device_stats = {
             'connected_devices': len(connected_devices),
@@ -1035,6 +1035,59 @@ class DeviceAutomationView(generic.ObjectView):
                 'object': obj,
                 'tab': self.tab,
                 'object_type': 'device',
+                'workflows': workflows_with_params,
+                'workflows_count': workflows.count(),
+                'execution_history': execution_history,
+            }
+        )
+
+
+@register_model_view(Interface, name='automation', path='automation')
+class InterfaceAutomationView(generic.ObjectView):
+    """Automation tab for Interface objects showing relevant external workflows"""
+    queryset = Interface.objects.all()
+    template_name = 'business_application/automation/automation_tab.html'
+
+    tab = ViewTab(
+        label='Automation',
+        badge=lambda obj: ExternalWorkflow.objects.filter(object_type='interface', enabled=True).count(),
+        permission='dcim.view_interface',
+        weight=600
+    )
+
+    def get(self, request, pk):
+        from django.contrib.contenttypes.models import ContentType
+        obj = self.get_object(pk=pk)
+
+        # Get all enabled workflows for interface object type
+        workflows = ExternalWorkflow.objects.filter(
+            object_type='interface',
+            enabled=True
+        ).order_by('name')
+
+        # Pre-compute mapped parameters for each workflow
+        workflows_with_params = []
+        for workflow in workflows:
+            mapped_params = workflow.get_mapped_parameters(obj)
+            workflows_with_params.append({
+                'workflow': workflow,
+                'mapped_params': mapped_params,
+            })
+
+        # Get execution history for this object
+        interface_ct = ContentType.objects.get_for_model(Interface)
+        execution_history = WorkflowExecution.objects.filter(
+            content_type=interface_ct,
+            object_id=obj.pk
+        ).select_related('workflow', 'user').order_by('-started_at')[:20]
+
+        return render(
+            request,
+            self.template_name,
+            context={
+                'object': obj,
+                'tab': self.tab,
+                'object_type': 'interface',
                 'workflows': workflows_with_params,
                 'workflows_count': workflows.count(),
                 'execution_history': execution_history,
@@ -1268,7 +1321,7 @@ class CalendarView(TemplateView):
                 business_apps__id__in=selected_apps
             ).values_list('id', flat=True)
             incidents_filter |= Q(affected_services__id__in=app_services)
-            
+
             # Also filter incidents for devices related to selected business apps
             app_devices = BusinessApplication.objects.filter(
                 id__in=selected_apps
@@ -1309,7 +1362,7 @@ class CalendarView(TemplateView):
 
             # Filter incidents for selected technical services
             incidents_filter |= Q(affected_services__id__in=selected_services)
-            
+
             # Also filter incidents for devices related to selected services
             service_devices = TechnicalService.objects.filter(
                 id__in=selected_services

@@ -203,10 +203,12 @@ class EventTable(NetBoxTable):
         {% load helpers %}
         {% if record.criticallity == 'critical' %}
             <span class="badge bg-danger text-light"><i class="mdi mdi-alert"></i> {{ record.get_criticallity_display }}</span>
-        {% elif record.criticallity == 'warning' %}
+        {% elif record.criticallity == 'high' %}
             <span class="badge bg-warning text-dark"><i class="mdi mdi-alert-outline"></i> {{ record.get_criticallity_display }}</span>
-        {% elif record.criticallity == 'info' %}
+        {% elif record.criticallity == 'medium' %}
             <span class="badge bg-info text-light"><i class="mdi mdi-information"></i> {{ record.get_criticallity_display }}</span>
+        {% elif record.criticallity == 'low' %}
+            <span class="badge bg-secondary text-dark"><i class="mdi mdi-arrow-down-bold"></i> {{ record.get_criticallity_display }}</span>
         {% else %}
             <span class="badge bg-light text-dark">{{ record.get_criticallity_display }}</span>
         {% endif %}
@@ -229,7 +231,7 @@ class EventTable(NetBoxTable):
     is_valid = tables.TemplateColumn(
         template_code="""
         {% load helpers %}
-        {% if record.is_valid %}
+        {% if record.is_valid_event %}
             <span class="badge bg-success text-light"><i class="mdi mdi-check-circle"></i> Valid</span>
         {% else %}
             <span class="badge bg-danger text-light"><i class="mdi mdi-alert-circle"></i> Invalid</span>

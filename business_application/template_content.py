@@ -4,7 +4,7 @@ from django.db.models import Q
 from .models import BusinessApplication, ServiceDependency
 from .tables import BusinessApplicationTable
 from virtualization.models import VirtualMachine
-from dcim.models import Device
+from dcim.models import Device, Interface
 
 class AppCodeExtension(PluginTemplateExtension):
     def left_page(self):
