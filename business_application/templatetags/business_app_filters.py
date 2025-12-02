@@ -1,7 +1,30 @@
 from django import template
 from django.utils.safestring import mark_safe
+import markdown
 
 register = template.Library()
+
+
+@register.filter
+def render_markdown(value):
+    """
+    Render a markdown string as HTML.
+    Supports common markdown features: headers, bold, italic, lists, code blocks, links, tables.
+    """
+    if not value:
+        return ''
+
+    # Configure markdown with useful extensions
+    md = markdown.Markdown(
+        extensions=[
+            'markdown.extensions.fenced_code',  # ```code blocks```
+            'markdown.extensions.tables',        # | tables |
+            'markdown.extensions.nl2br',         # newlines to <br>
+            'markdown.extensions.sane_lists',    # better list handling
+        ]
+    )
+
+    return mark_safe(md.convert(value))
 
 @register.filter
 def event_status_badge(status, display_name=None):
