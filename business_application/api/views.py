@@ -32,7 +32,7 @@ from business_application.api.serializers import (
     ExternalWorkflowSerializer,
     WorkflowExecutionSerializer
 )
-from dcim.models import Device
+from dcim.models import Device, Interface
 from virtualization.models import Cluster, VirtualMachine
 from django.db.models import Q
 
@@ -675,6 +675,10 @@ class ExternalWorkflowViewSet(ModelViewSet):
             if object_type == 'device':
                 source_obj = Device.objects.filter(pk=object_id).first()
                 content_type = ContentType.objects.get_for_model(Device)
+            elif object_type == 'interface':
+
+                source_obj = Interface.objects.filter(pk=object_id).first()
+                content_type = ContentType.objects.get_for_model(Interface)
             elif object_type == 'incident':
                 source_obj = Incident.objects.filter(pk=object_id).first()
                 content_type = ContentType.objects.get_for_model(Incident)
@@ -1415,30 +1419,30 @@ class AlertIngestionViewSet(ViewSet):
         - Combinations of both
         """
         import re
-        
+
         variants = [identifier]
-        
+
         # Strip .redhat.com domain
         if identifier.endswith('.redhat.com'):
             domain_stripped = identifier[:-len('.redhat.com')]
             variants.append(domain_stripped)
-        
+
         # Strip (N) suffix pattern - e.g., "sw01-leaf.site(0)" -> "sw01-leaf.site"
         parenthesis_pattern = re.compile(r'\(\d+\)$')
-        
+
         for variant in list(variants):  # iterate over a copy
             match = parenthesis_pattern.search(variant)
             if match:
                 stripped = parenthesis_pattern.sub('', variant)
                 if stripped not in variants:
                     variants.append(stripped)
-        
+
         # Also try adding (0) to match entries that have it in NetBox
         for variant in list(variants):
             with_zero = f"{variant}(0)"
             if with_zero not in variants:
                 variants.append(with_zero)
-        
+
         # Remove duplicates while preserving order
         seen = set()
         return [v for v in variants if not (v in seen or seen.add(v))]
@@ -1463,7 +1467,7 @@ class AlertIngestionViewSet(ViewSet):
                 # Use flexible matching for devices
                 identifier_variants = self._normalize_device_identifier(identifier)
                 logger.debug(f"Trying device identifier variants for '{identifier}': {identifier_variants}")
-                
+
                 for variant in identifier_variants:
                     target_obj = Device.objects.filter(name=variant).first()
                     if target_obj:
