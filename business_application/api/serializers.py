@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from netbox.api.serializers import NetBoxModelSerializer
 from business_application.models import (
     BusinessApplication, TechnicalService, ServiceDependency, EventSource, Event,
     Maintenance, ChangeType, Change, Incident, PagerDutyTemplate, ExternalWorkflow,
@@ -11,7 +12,7 @@ from django.db import models
 from datetime import datetime, timedelta
 
 
-class BusinessApplicationSerializer(serializers.ModelSerializer):
+class BusinessApplicationSerializer(NetBoxModelSerializer):
     """
     Serializer for the BusinessApplication model.
     Provides representation for API interactions.
@@ -58,7 +59,7 @@ class BusinessApplicationSerializer(serializers.ModelSerializer):
         ).count()
 
 
-class TechnicalServiceSerializer(serializers.ModelSerializer):
+class TechnicalServiceSerializer(NetBoxModelSerializer):
     """
     Serializer for the TechnicalService model.
     """
@@ -157,7 +158,7 @@ class TechnicalServiceSerializer(serializers.ModelSerializer):
         }
 
 
-class ServiceDependencySerializer(serializers.ModelSerializer):
+class ServiceDependencySerializer(NetBoxModelSerializer):
     """
     Serializer for the ServiceDependency model.
     """
@@ -217,7 +218,7 @@ class ServiceDependencySerializer(serializers.ModelSerializer):
         return (correlated_incidents / upstream_incidents) * 100
 
 
-class EventSourceSerializer(serializers.ModelSerializer):
+class EventSourceSerializer(NetBoxModelSerializer):
     """
     Serializer for the EventSource model.
     """
@@ -255,7 +256,7 @@ class EventSourceSerializer(serializers.ModelSerializer):
         return round((events_with_incidents / total_events) * 100, 2)
 
 
-class EventSerializer(serializers.ModelSerializer):
+class EventSerializer(NetBoxModelSerializer):
     """
     Serializer for the Event model.
     """
@@ -324,7 +325,7 @@ class EventSerializer(serializers.ModelSerializer):
         return 0.0
 
 
-class MaintenanceSerializer(serializers.ModelSerializer):
+class MaintenanceSerializer(NetBoxModelSerializer):
     """
     Serializer for the Maintenance model.
     """
@@ -347,7 +348,7 @@ class MaintenanceSerializer(serializers.ModelSerializer):
         ]
 
 
-class ChangeTypeSerializer(serializers.ModelSerializer):
+class ChangeTypeSerializer(NetBoxModelSerializer):
     """
     Serializer for the ChangeType model.
     """
@@ -365,7 +366,7 @@ class ChangeTypeSerializer(serializers.ModelSerializer):
         ]
 
 
-class ChangeSerializer(serializers.ModelSerializer):
+class ChangeSerializer(NetBoxModelSerializer):
     """
     Serializer for the Change model.
     """
@@ -388,7 +389,7 @@ class ChangeSerializer(serializers.ModelSerializer):
         ]
 
 
-class IncidentSerializer(serializers.ModelSerializer):
+class IncidentSerializer(NetBoxModelSerializer):
     """
     Serializer for the Incident model.
     """
@@ -465,7 +466,7 @@ class IncidentSerializer(serializers.ModelSerializer):
         ]
 
 
-class PagerDutyTemplateSerializer(serializers.ModelSerializer):
+class PagerDutyTemplateSerializer(NetBoxModelSerializer):
     """
     Serializer for the PagerDutyTemplate model.
     """
@@ -485,7 +486,7 @@ class PagerDutyTemplateSerializer(serializers.ModelSerializer):
         ]
 
 
-class ExternalWorkflowSerializer(serializers.ModelSerializer):
+class ExternalWorkflowSerializer(NetBoxModelSerializer):
     """
     Serializer for the ExternalWorkflow model.
     """
@@ -519,7 +520,7 @@ class ExternalWorkflowSerializer(serializers.ModelSerializer):
         ]
 
 
-class WorkflowExecutionSerializer(serializers.ModelSerializer):
+class WorkflowExecutionSerializer(NetBoxModelSerializer):
     """
     Serializer for the WorkflowExecution model.
     """
