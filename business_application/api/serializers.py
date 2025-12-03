@@ -590,11 +590,11 @@ class GenericAlertSerializer(serializers.Serializer):
     def validate_severity(self, value):
         """Validate alert severities."""
         valid_severities = {'cri': 'critical', 'hig': 'high', 'med': 'medium', 'low': 'low', 'war': 'medium'}
-        if value.lower() not in valid_severities:
+        if value.lower()[:3] not in valid_severities:
             raise serializers.ValidationError(
                 f"severity must be one of {valid_severities}"
             )
-        return value.lower()
+        return valid_severities[value.lower()[:3]]
 
     def validate_dedup_id(self, value):
         """Ensure dedup_id is unique enough."""
