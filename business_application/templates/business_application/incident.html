@@ -82,7 +82,7 @@
             </h5>
             <div class="card-body">
                 <div class="incident-description">
-                    {{ object.description|safe }}
+                    {{ object.description|render_markdown }}
                 </div>
             </div>
         </div>
