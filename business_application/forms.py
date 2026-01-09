@@ -449,16 +449,37 @@ class ExternalWorkflowForm(forms.ModelForm):
     """
     attribute_mapping = forms.JSONField(
         required=False,
-        help_text='JSON mapping of object attributes to workflow parameters',
+        help_text='JSON mapping of object attributes to workflow parameters (Jinja2 templates)',
         widget=forms.Textarea(attrs={
             'rows': 10,
             'placeholder': '''{
   "extra_vars": {
-    "device_name": "object.name",
-    "device_ip": "object.primary_ip4.address",
-    "severity": "object.severity"
+    "device_name": "{{ object.name }}",
+    "device_ip": "{{ object.primary_ip4.address }}",
+    "severity": "{{ object.severity }}"
   },
-  "limit": "object.name"
+  "limit": "{{ object.name }}"
+}'''
+        })
+    )
+
+    trigger_events = forms.JSONField(
+        required=False,
+        help_text='Events that trigger automatic execution (for incidents: on_create, on_update, on_resolve, on_acknowledge, on_status_change)',
+        widget=forms.Textarea(attrs={
+            'rows': 3,
+            'placeholder': '["on_create", "on_resolve"]'
+        })
+    )
+
+    conditions = forms.JSONField(
+        required=False,
+        help_text='Jinja2 conditions that must ALL evaluate to true for workflow to trigger',
+        widget=forms.Textarea(attrs={
+            'rows': 6,
+            'placeholder': '''{
+  "severity_check": "{{ object.severity in ['critical', 'high'] }}",
+  "has_services": "{{ object.affected_services.count() > 0 }}"
 }'''
         })
     )
@@ -476,6 +497,12 @@ class ExternalWorkflowForm(forms.ModelForm):
             'aap_resource_id',
             'n8n_webhook_url',
             'attribute_mapping',
+            # Auto-triggering fields
+            'auto_trigger',
+            'trigger_events',
+            'conditions',
+            'services',
+            'propagate_to_downstream',
         ]
         widgets = {
             'description': forms.Textarea(attrs={'rows': 3}),
@@ -487,6 +514,18 @@ class ExternalWorkflowForm(forms.ModelForm):
         # Add help text for conditional fields
         self.fields['aap_url'].widget.attrs['placeholder'] = 'https://aap.example.com'
         self.fields['n8n_webhook_url'].widget.attrs['placeholder'] = 'https://n8n.example.com/webhook/abc123'
+
+        # Group auto-trigger fields visually
+        self.fields['auto_trigger'].help_text = (
+            'Enable automatic workflow execution on object lifecycle events (currently for incidents only)'
+        )
+        self.fields['services'].help_text = (
+            'Services that trigger this workflow. For incidents: triggers if any affected service matches '
+            '(including upstream services if propagate_to_downstream is enabled)'
+        )
+        self.fields['propagate_to_downstream'].help_text = (
+            'If enabled, incidents on downstream (child) services will also trigger this workflow'
+        )
 
     def clean(self):
         cleaned_data = super().clean()
@@ -505,5 +544,37 @@ class ExternalWorkflowForm(forms.ModelForm):
         elif workflow_type == ExternalWorkflowType.N8N:
             if not cleaned_data.get('n8n_webhook_url'):
                 self.add_error('n8n_webhook_url', 'N8N webhook URL is required for N8N workflow type')
+
+        # Validate auto-trigger configuration
+        auto_trigger = cleaned_data.get('auto_trigger')
+        trigger_events = cleaned_data.get('trigger_events')
+        object_type = cleaned_data.get('object_type')
+
+        if auto_trigger:
+            if not trigger_events:
+                self.add_error('trigger_events', 'Trigger events are required when auto_trigger is enabled')
+            elif object_type != 'incident':
+                self.add_error(
+                    'auto_trigger',
+                    'Auto-trigger is currently only supported for incident object type'
+                )
+
+        # Validate trigger_events format
+        if trigger_events:
+            if not isinstance(trigger_events, list):
+                self.add_error('trigger_events', 'Trigger events must be a JSON array')
+            else:
+                valid_events = ['on_create', 'on_update', 'on_resolve', 'on_acknowledge', 'on_status_change']
+                invalid = [e for e in trigger_events if e not in valid_events]
+                if invalid:
+                    self.add_error(
+                        'trigger_events',
+                        f'Invalid trigger events: {invalid}. Valid options: {valid_events}'
+                    )
+
+        # Validate conditions format
+        conditions = cleaned_data.get('conditions')
+        if conditions and not isinstance(conditions, dict):
+            self.add_error('conditions', 'Conditions must be a JSON object')
 
         return cleaned_data

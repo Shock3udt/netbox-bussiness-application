@@ -101,7 +101,11 @@ def handle_incident_post_save(sender, instance, created, **kwargs):
     Handle incident creation and status changes.
     - Log creation
     - Sync status changes to PagerDuty
+    - Trigger external workflows
     """
+    # Get old status before any handler modifies the cache
+    old_status = _incident_status_cache.get(instance.pk)
+
     # Log creation
     if created:
         logger.info(f"New incident created: {instance.id} - {instance.title}")
@@ -109,7 +113,11 @@ def handle_incident_post_save(sender, instance, created, **kwargs):
         if getattr(settings, 'BUSINESS_APP_INCIDENT_NOTIFICATIONS_ENABLED', False):
             pass
 
+    # Sync to PagerDuty
     sync_incident_status_to_pagerduty(sender, instance, created)
+
+    # Trigger external workflows
+    trigger_incident_workflows(instance, created, old_status)
 
 
 def sync_incident_status_to_pagerduty(sender, instance, created):
@@ -123,8 +131,7 @@ def sync_incident_status_to_pagerduty(sender, instance, created):
         old_status = _incident_status_cache.get(instance.pk)
         new_status = instance.status
 
-        if instance.pk in _incident_status_cache:
-            del _incident_status_cache[instance.pk]
+        # Note: We don't delete from cache here - it's done after all handlers complete
 
         if old_status == new_status and not created:
             return
@@ -279,3 +286,47 @@ def bulk_resolve_events_and_check_incidents(event_ids):
     except Exception as e:
         logger.exception(f"Error in bulk_resolve_events_and_check_incidents: {str(e)}")
         return {'events_resolved': 0, 'incidents_resolved': [], 'errors': [str(e)]}
+
+
+def trigger_incident_workflows(incident, created, old_status):
+    """
+    Trigger external workflows for incident lifecycle events.
+
+    This function:
+    1. Checks if workflow auto-triggering is enabled
+    2. Finds applicable workflows via the incident's affected services (+ upstream services)
+    3. Executes matching workflows
+
+    Args:
+        incident: The Incident instance
+        created: Whether this is a new incident
+        old_status: The previous status (None if created)
+    """
+    # Check if workflow auto-triggering is enabled
+    if not getattr(settings, 'BUSINESS_APP_WORKFLOW_AUTO_TRIGGER_ENABLED', True):
+        return
+
+    # Clean up the status cache after all handlers have used it
+    if incident.pk in _incident_status_cache:
+        del _incident_status_cache[incident.pk]
+
+    try:
+        from .utils.workflow_automation import incident_workflow_engine
+
+        results = incident_workflow_engine.execute_for_incident(
+            incident=incident,
+            created=created,
+            old_status=old_status,
+            new_status=incident.status
+        )
+
+        if results:
+            successful = sum(1 for r in results if r.get('success'))
+            failed = len(results) - successful
+            logger.info(
+                f"Auto-triggered {len(results)} workflows for incident {incident.pk}: "
+                f"{successful} succeeded, {failed} failed"
+            )
+
+    except Exception as e:
+        logger.exception(f"Error auto-triggering workflows for incident {incident.pk}: {e}")

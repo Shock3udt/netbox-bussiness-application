@@ -167,3 +167,8 @@ class IncidentAutomationConfig:
     def DEFAULT_INCIDENT_COMMANDER(self):
         """Default incident commander for auto-created incidents."""
         return getattr(settings, 'BUSINESS_APP_DEFAULT_INCIDENT_COMMANDER', 'Ops Team')
+
+    @property
+    def WORKFLOW_AUTO_TRIGGER_ENABLED(self):
+        """Whether to automatically trigger workflows on incident lifecycle events."""
+        return getattr(settings, 'BUSINESS_APP_WORKFLOW_AUTO_TRIGGER_ENABLED', True)

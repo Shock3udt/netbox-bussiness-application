@@ -896,6 +896,50 @@ class ExternalWorkflow(NetBoxModel):
         For N8N: {"field_name": "object.field", "another_field": "object.other_field"}'''
     )
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # Automatic Triggering Configuration (currently for Incidents only)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    auto_trigger = models.BooleanField(
+        default=False,
+        help_text='Enable automatic workflow execution on object lifecycle events (currently for incidents only)'
+    )
+
+    trigger_events = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='''Events that trigger automatic execution. For incidents:
+        ["on_create", "on_update", "on_resolve", "on_acknowledge", "on_status_change"]'''
+    )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Jinja2-based Conditions
+    # ═══════════════════════════════════════════════════════════════════════
+
+    conditions = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='''Jinja2 conditions that must ALL evaluate to true for workflow to trigger.
+        For incidents: {"severity_check": "{{ object.severity in ['critical', 'high'] }}"}
+        For devices (future): {"role_filter": "{{ object.role.slug == 'router' }}"}'''
+    )
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Service Association (for Incident auto-triggering)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    services = models.ManyToManyField(
+        'TechnicalService',
+        related_name='workflows',
+        blank=True,
+        help_text='Services that trigger this workflow. For incidents: triggers if any affected service matches.'
+    )
+
+    propagate_to_downstream = models.BooleanField(
+        default=True,
+        help_text='If enabled, incidents on downstream (child) services will also trigger this workflow'
+    )
+
     class Meta:
         ordering = ['name']
         verbose_name = 'External Workflow'
@@ -1009,6 +1053,95 @@ class ExternalWorkflow(NetBoxModel):
         result = process_value(self.attribute_mapping, context)
 
         return result
+
+    def evaluate_conditions(self, obj, context: dict = None) -> tuple:
+        """
+        Evaluate all Jinja2 conditions against an object.
+
+        Args:
+            obj: The source object (Device, Incident, etc.)
+            context: Additional context variables (e.g., old_status, trigger_event)
+
+        Returns:
+            Tuple of (all_passed: bool, results: dict)
+            results contains each condition name with its evaluated result
+        """
+        if not self.conditions:
+            return True, {}
+
+        from jinja2 import Environment, BaseLoader
+
+        env = Environment(loader=BaseLoader(), autoescape=False)
+
+        # Build context
+        ctx = {
+            'object': obj,
+            'now': timezone.now(),
+            'True': True,
+            'False': False,
+            'None': None,
+        }
+        if context:
+            ctx.update(context)
+
+        results = {}
+        all_passed = True
+
+        for condition_name, condition_template in self.conditions.items():
+            try:
+                template = env.from_string(str(condition_template))
+                rendered = template.render(**ctx).strip().lower()
+
+                # Evaluate truthy/falsy
+                passed = rendered in ('true', '1', 'yes')
+
+                results[condition_name] = {
+                    'passed': passed,
+                    'rendered': rendered,
+                    'template': condition_template
+                }
+
+                if not passed:
+                    all_passed = False
+
+            except Exception as e:
+                results[condition_name] = {
+                    'passed': False,
+                    'error': str(e),
+                    'template': condition_template
+                }
+                all_passed = False
+
+        return all_passed, results
+
+    def should_auto_trigger(self, obj, trigger_event: str, context: dict = None) -> tuple:
+        """
+        Check if this workflow should auto-trigger for an object.
+
+        Args:
+            obj: The source object (Incident, etc.)
+            trigger_event: The event that occurred (e.g., 'on_create', 'on_resolve')
+            context: Additional context for condition evaluation
+
+        Returns:
+            Tuple of (should_trigger: bool, reason: str)
+        """
+        if not self.auto_trigger:
+            return False, "auto_trigger is disabled"
+
+        if not self.enabled:
+            return False, "workflow is disabled"
+
+        if trigger_event not in (self.trigger_events or []):
+            return False, f"trigger_event '{trigger_event}' not in {self.trigger_events}"
+
+        # Evaluate conditions
+        passed, results = self.evaluate_conditions(obj, context)
+        if not passed:
+            failed = [k for k, v in results.items() if not v.get('passed')]
+            return False, f"conditions not met: {failed}"
+
+        return True, "all checks passed"
 
     def __str__(self):
         return f"{self.name} ({self.get_workflow_type_display()})"

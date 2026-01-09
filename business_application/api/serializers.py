@@ -656,6 +656,11 @@ class ExternalWorkflowSerializer(serializers.ModelSerializer):
     workflow_type_display = serializers.CharField(source='get_workflow_type_display', read_only=True)
     object_type_display = serializers.CharField(source='get_object_type_display', read_only=True)
     aap_resource_type_display = serializers.CharField(source='get_aap_resource_type_display', read_only=True)
+    services = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=TechnicalService.objects.all(),
+        required=False
+    )
 
     class Meta:
         model = ExternalWorkflow
@@ -674,6 +679,13 @@ class ExternalWorkflowSerializer(serializers.ModelSerializer):
             'aap_resource_id',
             'n8n_webhook_url',
             'attribute_mapping',
+            # Auto-triggering fields
+            'auto_trigger',
+            'trigger_events',
+            'conditions',
+            'services',
+            'propagate_to_downstream',
+            # Read-only fields
             'workflow_url',
             'workflow_identifier',
             'created',
