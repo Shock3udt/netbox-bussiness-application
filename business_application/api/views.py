@@ -31,7 +31,10 @@ from business_application.api.serializers import (
     PagerDutyTemplateSerializer,
     ExternalWorkflowSerializer,
     WorkflowExecutionSerializer,
-    DeviceBusinessApplicationRelationshipSerializer
+    DeviceBusinessApplicationRelationshipSerializer,
+    VirtualMachineBusinessApplicationRelationshipSerializer,
+    TechnicalServiceDeviceRelationshipSerializer,
+    TechnicalServiceVMRelationshipSerializer
 )
 from dcim.models import Device
 from virtualization.models import Cluster, VirtualMachine
@@ -1604,6 +1607,213 @@ class DeviceBusinessApplicationRelationshipViewSet(ViewSet):
 
         # Serialize
         serializer = DeviceBusinessApplicationRelationshipSerializer(relationships, many=True)
+
+        return Response({
+            'count': total_count,
+            'limit': limit,
+            'offset': offset,
+            'results': serializer.data
+        })
+
+
+class VirtualMachineBusinessApplicationRelationshipViewSet(ViewSet):
+    """
+    API endpoint for listing virtual machine to business application relationships as unique objects.
+    Provides a flat view of the ManyToMany relationship between VMs and business applications.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """
+        List all virtual machine-to-business application relationships.
+        Supports filtering by virtual_machine_id, virtual_machine_name, business_application_id, appcode.
+        """
+        # Get filter parameters
+        vm_id = request.query_params.get('virtual_machine_id')
+        vm_name = request.query_params.get('virtual_machine_name')
+        business_application_id = request.query_params.get('business_application_id')
+        appcode = request.query_params.get('appcode')
+        limit = int(request.query_params.get('limit', 100))
+        offset = int(request.query_params.get('offset', 0))
+
+        # Build queryset - query through BusinessApplication to get relationships
+        queryset = BusinessApplication.objects.prefetch_related('virtual_machines').all()
+
+        # Apply filters
+        if business_application_id:
+            queryset = queryset.filter(id=business_application_id)
+        if appcode:
+            queryset = queryset.filter(appcode__iexact=appcode)
+
+        # Build list of relationships
+        relationships = []
+        relationship_id = 0
+
+        for app in queryset:
+            vms = app.virtual_machines.all()
+
+            # Apply VM filters
+            if vm_id:
+                vms = vms.filter(id=vm_id)
+            if vm_name:
+                vms = vms.filter(name__icontains=vm_name)
+
+            for vm in vms:
+                relationship_id += 1
+                relationships.append({
+                    'id': relationship_id,
+                    'virtual_machine_id': vm.id,
+                    'virtual_machine_name': vm.name,
+                    'virtual_machine_cluster': vm.cluster.name if vm.cluster else None,
+                    'business_application_id': app.id,
+                    'business_application_appcode': app.appcode,
+                    'business_application_name': app.name,
+                })
+
+        # Apply pagination
+        total_count = len(relationships)
+        relationships = relationships[offset:offset + limit]
+
+        # Serialize
+        serializer = VirtualMachineBusinessApplicationRelationshipSerializer(relationships, many=True)
+
+        return Response({
+            'count': total_count,
+            'limit': limit,
+            'offset': offset,
+            'results': serializer.data
+        })
+
+
+class TechnicalServiceDeviceRelationshipViewSet(ViewSet):
+    """
+    API endpoint for listing technical service to device relationships as unique objects.
+    Provides a flat view of the ManyToMany relationship between technical services and devices.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """
+        List all technical service-to-device relationships.
+        Supports filtering by technical_service_id, technical_service_name, device_id, device_name.
+        """
+        # Get filter parameters
+        service_id = request.query_params.get('technical_service_id')
+        service_name = request.query_params.get('technical_service_name')
+        device_id = request.query_params.get('device_id')
+        device_name = request.query_params.get('device_name')
+        limit = int(request.query_params.get('limit', 100))
+        offset = int(request.query_params.get('offset', 0))
+
+        # Build queryset - query through TechnicalService to get relationships
+        queryset = TechnicalService.objects.prefetch_related('devices').all()
+
+        # Apply filters
+        if service_id:
+            queryset = queryset.filter(id=service_id)
+        if service_name:
+            queryset = queryset.filter(name__icontains=service_name)
+
+        # Build list of relationships
+        relationships = []
+        relationship_id = 0
+
+        for service in queryset:
+            devices = service.devices.all()
+
+            # Apply device filters
+            if device_id:
+                devices = devices.filter(id=device_id)
+            if device_name:
+                devices = devices.filter(name__icontains=device_name)
+
+            for device in devices:
+                relationship_id += 1
+                relationships.append({
+                    'id': relationship_id,
+                    'technical_service_id': service.id,
+                    'technical_service_name': service.name,
+                    'technical_service_type': service.service_type,
+                    'device_id': device.id,
+                    'device_name': device.name,
+                    'device_site': device.site.name if device.site else None,
+                })
+
+        # Apply pagination
+        total_count = len(relationships)
+        relationships = relationships[offset:offset + limit]
+
+        # Serialize
+        serializer = TechnicalServiceDeviceRelationshipSerializer(relationships, many=True)
+
+        return Response({
+            'count': total_count,
+            'limit': limit,
+            'offset': offset,
+            'results': serializer.data
+        })
+
+
+class TechnicalServiceVMRelationshipViewSet(ViewSet):
+    """
+    API endpoint for listing technical service to virtual machine relationships as unique objects.
+    Provides a flat view of the ManyToMany relationship between technical services and VMs.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """
+        List all technical service-to-virtual machine relationships.
+        Supports filtering by technical_service_id, technical_service_name, virtual_machine_id, virtual_machine_name.
+        """
+        # Get filter parameters
+        service_id = request.query_params.get('technical_service_id')
+        service_name = request.query_params.get('technical_service_name')
+        vm_id = request.query_params.get('virtual_machine_id')
+        vm_name = request.query_params.get('virtual_machine_name')
+        limit = int(request.query_params.get('limit', 100))
+        offset = int(request.query_params.get('offset', 0))
+
+        # Build queryset - query through TechnicalService to get relationships
+        queryset = TechnicalService.objects.prefetch_related('vms').all()
+
+        # Apply filters
+        if service_id:
+            queryset = queryset.filter(id=service_id)
+        if service_name:
+            queryset = queryset.filter(name__icontains=service_name)
+
+        # Build list of relationships
+        relationships = []
+        relationship_id = 0
+
+        for service in queryset:
+            vms = service.vms.all()
+
+            # Apply VM filters
+            if vm_id:
+                vms = vms.filter(id=vm_id)
+            if vm_name:
+                vms = vms.filter(name__icontains=vm_name)
+
+            for vm in vms:
+                relationship_id += 1
+                relationships.append({
+                    'id': relationship_id,
+                    'technical_service_id': service.id,
+                    'technical_service_name': service.name,
+                    'technical_service_type': service.service_type,
+                    'virtual_machine_id': vm.id,
+                    'virtual_machine_name': vm.name,
+                    'virtual_machine_cluster': vm.cluster.name if vm.cluster else None,
+                })
+
+        # Apply pagination
+        total_count = len(relationships)
+        relationships = relationships[offset:offset + limit]
+
+        # Serialize
+        serializer = TechnicalServiceVMRelationshipSerializer(relationships, many=True)
 
         return Response({
             'count': total_count,

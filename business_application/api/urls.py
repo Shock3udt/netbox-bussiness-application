@@ -7,7 +7,10 @@ from business_application.api.views import (
     EventSourceViewSet, EventViewSet, MaintenanceViewSet, ChangeTypeViewSet, ChangeViewSet,
     IncidentViewSet, DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet, AlertIngestionViewSet,
     PagerDutyTemplateViewSet, ExternalWorkflowViewSet, WorkflowExecutionViewSet,
-    DeviceBusinessApplicationRelationshipViewSet
+    DeviceBusinessApplicationRelationshipViewSet,
+    VirtualMachineBusinessApplicationRelationshipViewSet,
+    TechnicalServiceDeviceRelationshipViewSet,
+    TechnicalServiceVMRelationshipViewSet
 )
 from business_application.api.incident_automation_views import IncidentAutomationViewSet
 
@@ -54,5 +57,23 @@ urlpatterns = router.urls + [
         'device-business-app-relationships/',
         DeviceBusinessApplicationRelationshipViewSet.as_view({'get': 'list'}),
         name='device-business-app-relationships-list'
+    ),
+    # Virtual machine to business application relationships
+    path(
+        'vm-business-app-relationships/',
+        VirtualMachineBusinessApplicationRelationshipViewSet.as_view({'get': 'list'}),
+        name='vm-business-app-relationships-list'
+    ),
+    # Technical service to device relationships
+    path(
+        'technical-service-device-relationships/',
+        TechnicalServiceDeviceRelationshipViewSet.as_view({'get': 'list'}),
+        name='technical-service-device-relationships-list'
+    ),
+    # Technical service to virtual machine relationships
+    path(
+        'technical-service-vm-relationships/',
+        TechnicalServiceVMRelationshipViewSet.as_view({'get': 'list'}),
+        name='technical-service-vm-relationships-list'
     ),
 ]

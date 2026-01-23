@@ -1126,3 +1126,36 @@ class DeviceBusinessApplicationRelationshipSerializer(serializers.Serializer):
     business_application_id = serializers.IntegerField()
     business_application_appcode = serializers.CharField()
     business_application_name = serializers.CharField()
+
+
+class VirtualMachineBusinessApplicationRelationshipSerializer(serializers.Serializer):
+    """Serializer for virtual machine to business application relationships."""
+    id = serializers.IntegerField(read_only=True)
+    virtual_machine_id = serializers.IntegerField()
+    virtual_machine_name = serializers.CharField()
+    virtual_machine_cluster = serializers.CharField(allow_null=True)
+    business_application_id = serializers.IntegerField()
+    business_application_appcode = serializers.CharField()
+    business_application_name = serializers.CharField()
+
+
+class TechnicalServiceDeviceRelationshipSerializer(serializers.Serializer):
+    """Serializer for technical service to device relationships."""
+    id = serializers.IntegerField(read_only=True)
+    technical_service_id = serializers.IntegerField()
+    technical_service_name = serializers.CharField()
+    technical_service_type = serializers.CharField()
+    device_id = serializers.IntegerField()
+    device_name = serializers.CharField()
+    device_site = serializers.CharField(allow_null=True)
+
+
+class TechnicalServiceVMRelationshipSerializer(serializers.Serializer):
+    """Serializer for technical service to virtual machine relationships."""
+    id = serializers.IntegerField(read_only=True)
+    technical_service_id = serializers.IntegerField()
+    technical_service_name = serializers.CharField()
+    technical_service_type = serializers.CharField()
+    virtual_machine_id = serializers.IntegerField()
+    virtual_machine_name = serializers.CharField()
+    virtual_machine_cluster = serializers.CharField(allow_null=True)
