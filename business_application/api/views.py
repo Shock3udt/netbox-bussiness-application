@@ -30,7 +30,8 @@ from business_application.api.serializers import (
     GitLabSerializer,
     PagerDutyTemplateSerializer,
     ExternalWorkflowSerializer,
-    WorkflowExecutionSerializer
+    WorkflowExecutionSerializer,
+    DeviceBusinessApplicationRelationshipSerializer
 )
 from dcim.models import Device
 from virtualization.models import Cluster, VirtualMachine
@@ -1541,3 +1542,72 @@ class AlertIngestionViewSet(ViewSet):
         return (dimensions.get('host') or
                 dimensions.get('vm_name') or
                 dimensions.get('service_name', ''))
+
+
+class DeviceBusinessApplicationRelationshipViewSet(ViewSet):
+    """
+    API endpoint for listing device to business application relationships as unique objects.
+    Provides a flat view of the ManyToMany relationship between devices and business applications.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """
+        List all device-to-business application relationships.
+        Supports filtering by device_id, device_name, business_application_id, appcode.
+        """
+        # Get filter parameters
+        device_id = request.query_params.get('device_id')
+        device_name = request.query_params.get('device_name')
+        business_application_id = request.query_params.get('business_application_id')
+        appcode = request.query_params.get('appcode')
+        limit = int(request.query_params.get('limit', 100))
+        offset = int(request.query_params.get('offset', 0))
+
+        # Build queryset - query through BusinessApplication to get relationships
+        queryset = BusinessApplication.objects.prefetch_related('devices').all()
+
+        # Apply filters
+        if business_application_id:
+            queryset = queryset.filter(id=business_application_id)
+        if appcode:
+            queryset = queryset.filter(appcode__iexact=appcode)
+
+        # Build list of relationships
+        relationships = []
+        relationship_id = 0
+
+        for app in queryset:
+            devices = app.devices.all()
+
+            # Apply device filters
+            if device_id:
+                devices = devices.filter(id=device_id)
+            if device_name:
+                devices = devices.filter(name__icontains=device_name)
+
+            for device in devices:
+                relationship_id += 1
+                relationships.append({
+                    'id': relationship_id,
+                    'device_id': device.id,
+                    'device_name': device.name,
+                    'device_site': device.site.name if device.site else None,
+                    'business_application_id': app.id,
+                    'business_application_appcode': app.appcode,
+                    'business_application_name': app.name,
+                })
+
+        # Apply pagination
+        total_count = len(relationships)
+        relationships = relationships[offset:offset + limit]
+
+        # Serialize
+        serializer = DeviceBusinessApplicationRelationshipSerializer(relationships, many=True)
+
+        return Response({
+            'count': total_count,
+            'limit': limit,
+            'offset': offset,
+            'results': serializer.data
+        })

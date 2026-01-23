@@ -6,7 +6,8 @@ from business_application.api.views import (
     BusinessApplicationViewSet, TechnicalServiceViewSet, ServiceDependencyViewSet,
     EventSourceViewSet, EventViewSet, MaintenanceViewSet, ChangeTypeViewSet, ChangeViewSet,
     IncidentViewSet, DeviceDownstreamAppsViewSet, ClusterDownstreamAppsViewSet, AlertIngestionViewSet,
-    PagerDutyTemplateViewSet, ExternalWorkflowViewSet, WorkflowExecutionViewSet
+    PagerDutyTemplateViewSet, ExternalWorkflowViewSet, WorkflowExecutionViewSet,
+    DeviceBusinessApplicationRelationshipViewSet
 )
 from business_application.api.incident_automation_views import IncidentAutomationViewSet
 
@@ -47,5 +48,11 @@ urlpatterns = router.urls + [
         'clusters/downstream-applications/<int:pk>/',
         ClusterDownstreamAppsViewSet.as_view({'get': 'retrieve'}),
         name='cluster-downstream-applications-detail'
+    ),
+    # Device to business application relationships
+    path(
+        'device-business-app-relationships/',
+        DeviceBusinessApplicationRelationshipViewSet.as_view({'get': 'list'}),
+        name='device-business-app-relationships-list'
     ),
 ]

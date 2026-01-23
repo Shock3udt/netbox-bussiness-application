@@ -1115,3 +1115,14 @@ class IncidentAutomationIncidentSerializer(serializers.ModelSerializer):
             delta = last_event.created_at - first_event.created_at
             return int(delta.total_seconds() / 60)
         return 0
+
+
+class DeviceBusinessApplicationRelationshipSerializer(serializers.Serializer):
+    """Serializer for device to business application relationships."""
+    id = serializers.IntegerField(read_only=True)
+    device_id = serializers.IntegerField()
+    device_name = serializers.CharField()
+    device_site = serializers.CharField(allow_null=True)
+    business_application_id = serializers.IntegerField()
+    business_application_appcode = serializers.CharField()
+    business_application_name = serializers.CharField()
