@@ -1551,6 +1551,7 @@ class DeviceBusinessApplicationRelationshipViewSet(ModelViewSet):
     """
     API endpoint for listing device to business application relationships as unique objects.
     Provides a flat view of the ManyToMany relationship between devices and business applications.
+    Optimized for database-level pagination and efficient queries.
     """
     queryset = BusinessApplication.objects.all()
     serializer_class = DeviceBusinessApplicationRelationshipSerializer
@@ -1561,6 +1562,8 @@ class DeviceBusinessApplicationRelationshipViewSet(ModelViewSet):
         List all device-to-business application relationships.
         Supports filtering by device_id, device_name, business_application_id, appcode.
         """
+        from django.db.models import F
+
         # Get filter parameters
         device_id = request.query_params.get('device_id')
         device_name = request.query_params.get('device_name')
@@ -1569,52 +1572,48 @@ class DeviceBusinessApplicationRelationshipViewSet(ModelViewSet):
         limit = int(request.query_params.get('limit', 100))
         offset = int(request.query_params.get('offset', 0))
 
-        # Build queryset - query through BusinessApplication to get relationships
-        queryset = BusinessApplication.objects.prefetch_related('devices').all()
+        # Query M2M relationship directly at database level with annotations
+        queryset = Device.objects.filter(
+            business_applications__isnull=False
+        ).select_related('site').annotate(
+            business_application_id=F('business_applications__id'),
+            business_application_appcode=F('business_applications__appcode'),
+            business_application_name=F('business_applications__name'),
+        )
 
-        # Apply filters
+        # Apply filters at database level
+        if device_id:
+            queryset = queryset.filter(id=device_id)
+        if device_name:
+            queryset = queryset.filter(name__icontains=device_name)
         if business_application_id:
-            queryset = queryset.filter(id=business_application_id)
+            queryset = queryset.filter(business_application_id=business_application_id)
         if appcode:
-            queryset = queryset.filter(appcode__iexact=appcode)
+            queryset = queryset.filter(business_application_appcode__iexact=appcode)
 
-        # Build list of relationships
-        relationships = []
-        relationship_id = 0
+        # Get total count and apply database-level pagination
+        total_count = queryset.count()
+        queryset = queryset.order_by('id', 'business_application_id')[offset:offset + limit]
 
-        for app in queryset:
-            devices = app.devices.all()
-
-            # Apply device filters
-            if device_id:
-                devices = devices.filter(id=device_id)
-            if device_name:
-                devices = devices.filter(name__icontains=device_name)
-
-            for device in devices:
-                relationship_id += 1
-                relationships.append({
-                    'id': relationship_id,
-                    'device_id': device.id,
-                    'device_name': device.name,
-                    'device_site': device.site.name if device.site else None,
-                    'business_application_id': app.id,
-                    'business_application_appcode': app.appcode,
-                    'business_application_name': app.name,
-                })
-
-        # Apply pagination
-        total_count = len(relationships)
-        relationships = relationships[offset:offset + limit]
-
-        # Serialize
-        serializer = DeviceBusinessApplicationRelationshipSerializer(relationships, many=True)
+        # Build results directly from annotated queryset
+        results = [
+            {
+                'id': idx + offset + 1,
+                'device_id': obj.id,
+                'device_name': obj.name,
+                'device_site': obj.site.name if obj.site else None,
+                'business_application_id': obj.business_application_id,
+                'business_application_appcode': obj.business_application_appcode,
+                'business_application_name': obj.business_application_name,
+            }
+            for idx, obj in enumerate(queryset)
+        ]
 
         return Response({
             'count': total_count,
             'limit': limit,
             'offset': offset,
-            'results': serializer.data
+            'results': results
         })
 
 
@@ -1622,6 +1621,7 @@ class VirtualMachineBusinessApplicationRelationshipViewSet(ModelViewSet):
     """
     API endpoint for listing virtual machine to business application relationships as unique objects.
     Provides a flat view of the ManyToMany relationship between VMs and business applications.
+    Optimized for database-level pagination and efficient queries.
     """
     queryset = BusinessApplication.objects.all()
     serializer_class = VirtualMachineBusinessApplicationRelationshipSerializer
@@ -1632,6 +1632,8 @@ class VirtualMachineBusinessApplicationRelationshipViewSet(ModelViewSet):
         List all virtual machine-to-business application relationships.
         Supports filtering by virtual_machine_id, virtual_machine_name, business_application_id, appcode.
         """
+        from django.db.models import F
+
         # Get filter parameters
         vm_id = request.query_params.get('virtual_machine_id')
         vm_name = request.query_params.get('virtual_machine_name')
@@ -1640,52 +1642,48 @@ class VirtualMachineBusinessApplicationRelationshipViewSet(ModelViewSet):
         limit = int(request.query_params.get('limit', 100))
         offset = int(request.query_params.get('offset', 0))
 
-        # Build queryset - query through BusinessApplication to get relationships
-        queryset = BusinessApplication.objects.prefetch_related('virtual_machines').all()
+        # Query M2M relationship directly at database level with annotations
+        queryset = VirtualMachine.objects.filter(
+            business_applications__isnull=False
+        ).select_related('cluster').annotate(
+            business_application_id=F('business_applications__id'),
+            business_application_appcode=F('business_applications__appcode'),
+            business_application_name=F('business_applications__name'),
+        )
 
-        # Apply filters
+        # Apply filters at database level
+        if vm_id:
+            queryset = queryset.filter(id=vm_id)
+        if vm_name:
+            queryset = queryset.filter(name__icontains=vm_name)
         if business_application_id:
-            queryset = queryset.filter(id=business_application_id)
+            queryset = queryset.filter(business_application_id=business_application_id)
         if appcode:
-            queryset = queryset.filter(appcode__iexact=appcode)
+            queryset = queryset.filter(business_application_appcode__iexact=appcode)
 
-        # Build list of relationships
-        relationships = []
-        relationship_id = 0
+        # Get total count and apply database-level pagination
+        total_count = queryset.count()
+        queryset = queryset.order_by('id', 'business_application_id')[offset:offset + limit]
 
-        for app in queryset:
-            vms = app.virtual_machines.all()
-
-            # Apply VM filters
-            if vm_id:
-                vms = vms.filter(id=vm_id)
-            if vm_name:
-                vms = vms.filter(name__icontains=vm_name)
-
-            for vm in vms:
-                relationship_id += 1
-                relationships.append({
-                    'id': relationship_id,
-                    'virtual_machine_id': vm.id,
-                    'virtual_machine_name': vm.name,
-                    'virtual_machine_cluster': vm.cluster.name if vm.cluster else None,
-                    'business_application_id': app.id,
-                    'business_application_appcode': app.appcode,
-                    'business_application_name': app.name,
-                })
-
-        # Apply pagination
-        total_count = len(relationships)
-        relationships = relationships[offset:offset + limit]
-
-        # Serialize
-        serializer = VirtualMachineBusinessApplicationRelationshipSerializer(relationships, many=True)
+        # Build results directly from annotated queryset
+        results = [
+            {
+                'id': idx + offset + 1,
+                'virtual_machine_id': obj.id,
+                'virtual_machine_name': obj.name,
+                'virtual_machine_cluster': obj.cluster.name if obj.cluster else None,
+                'business_application_id': obj.business_application_id,
+                'business_application_appcode': obj.business_application_appcode,
+                'business_application_name': obj.business_application_name,
+            }
+            for idx, obj in enumerate(queryset)
+        ]
 
         return Response({
             'count': total_count,
             'limit': limit,
             'offset': offset,
-            'results': serializer.data
+            'results': results
         })
 
 
@@ -1693,6 +1691,7 @@ class TechnicalServiceDeviceRelationshipViewSet(ModelViewSet):
     """
     API endpoint for listing technical service to device relationships as unique objects.
     Provides a flat view of the ManyToMany relationship between technical services and devices.
+    Optimized for database-level pagination and efficient queries.
     """
     queryset = TechnicalService.objects.all()
     serializer_class = TechnicalServiceDeviceRelationshipSerializer
@@ -1703,6 +1702,8 @@ class TechnicalServiceDeviceRelationshipViewSet(ModelViewSet):
         List all technical service-to-device relationships.
         Supports filtering by technical_service_id, technical_service_name, device_id, device_name.
         """
+        from django.db.models import F
+
         # Get filter parameters
         service_id = request.query_params.get('technical_service_id')
         service_name = request.query_params.get('technical_service_name')
@@ -1711,52 +1712,48 @@ class TechnicalServiceDeviceRelationshipViewSet(ModelViewSet):
         limit = int(request.query_params.get('limit', 100))
         offset = int(request.query_params.get('offset', 0))
 
-        # Build queryset - query through TechnicalService to get relationships
-        queryset = TechnicalService.objects.prefetch_related('devices').all()
+        # Query M2M relationship directly at database level with annotations
+        queryset = Device.objects.filter(
+            technical_services__isnull=False
+        ).select_related('site').annotate(
+            technical_service_id=F('technical_services__id'),
+            technical_service_name=F('technical_services__name'),
+            technical_service_type=F('technical_services__service_type'),
+        )
 
-        # Apply filters
+        # Apply filters at database level
+        if device_id:
+            queryset = queryset.filter(id=device_id)
+        if device_name:
+            queryset = queryset.filter(name__icontains=device_name)
         if service_id:
-            queryset = queryset.filter(id=service_id)
+            queryset = queryset.filter(technical_service_id=service_id)
         if service_name:
-            queryset = queryset.filter(name__icontains=service_name)
+            queryset = queryset.filter(technical_service_name__icontains=service_name)
 
-        # Build list of relationships
-        relationships = []
-        relationship_id = 0
+        # Get total count and apply database-level pagination
+        total_count = queryset.count()
+        queryset = queryset.order_by('id', 'technical_service_id')[offset:offset + limit]
 
-        for service in queryset:
-            devices = service.devices.all()
-
-            # Apply device filters
-            if device_id:
-                devices = devices.filter(id=device_id)
-            if device_name:
-                devices = devices.filter(name__icontains=device_name)
-
-            for device in devices:
-                relationship_id += 1
-                relationships.append({
-                    'id': relationship_id,
-                    'technical_service_id': service.id,
-                    'technical_service_name': service.name,
-                    'technical_service_type': service.service_type,
-                    'device_id': device.id,
-                    'device_name': device.name,
-                    'device_site': device.site.name if device.site else None,
-                })
-
-        # Apply pagination
-        total_count = len(relationships)
-        relationships = relationships[offset:offset + limit]
-
-        # Serialize
-        serializer = TechnicalServiceDeviceRelationshipSerializer(relationships, many=True)
+        # Build results directly from annotated queryset
+        results = [
+            {
+                'id': idx + offset + 1,
+                'technical_service_id': obj.technical_service_id,
+                'technical_service_name': obj.technical_service_name,
+                'technical_service_type': obj.technical_service_type,
+                'device_id': obj.id,
+                'device_name': obj.name,
+                'device_site': obj.site.name if obj.site else None,
+            }
+            for idx, obj in enumerate(queryset)
+        ]
 
         return Response({
             'count': total_count,
             'limit': limit,
             'offset': offset,
-            'results': serializer.data
+            'results': results
         })
 
 
@@ -1764,6 +1761,7 @@ class TechnicalServiceVMRelationshipViewSet(ModelViewSet):
     """
     API endpoint for listing technical service to virtual machine relationships as unique objects.
     Provides a flat view of the ManyToMany relationship between technical services and VMs.
+    Optimized for database-level pagination and efficient queries.
     """
     queryset = TechnicalService.objects.all()
     serializer_class = TechnicalServiceVMRelationshipSerializer
@@ -1774,6 +1772,8 @@ class TechnicalServiceVMRelationshipViewSet(ModelViewSet):
         List all technical service-to-virtual machine relationships.
         Supports filtering by technical_service_id, technical_service_name, virtual_machine_id, virtual_machine_name.
         """
+        from django.db.models import F
+
         # Get filter parameters
         service_id = request.query_params.get('technical_service_id')
         service_name = request.query_params.get('technical_service_name')
@@ -1782,50 +1782,46 @@ class TechnicalServiceVMRelationshipViewSet(ModelViewSet):
         limit = int(request.query_params.get('limit', 100))
         offset = int(request.query_params.get('offset', 0))
 
-        # Build queryset - query through TechnicalService to get relationships
-        queryset = TechnicalService.objects.prefetch_related('vms').all()
+        # Query M2M relationship directly at database level with annotations
+        queryset = VirtualMachine.objects.filter(
+            technical_services__isnull=False
+        ).select_related('cluster').annotate(
+            technical_service_id=F('technical_services__id'),
+            technical_service_name=F('technical_services__name'),
+            technical_service_type=F('technical_services__service_type'),
+        )
 
-        # Apply filters
+        # Apply filters at database level
+        if vm_id:
+            queryset = queryset.filter(id=vm_id)
+        if vm_name:
+            queryset = queryset.filter(name__icontains=vm_name)
         if service_id:
-            queryset = queryset.filter(id=service_id)
+            queryset = queryset.filter(technical_service_id=service_id)
         if service_name:
-            queryset = queryset.filter(name__icontains=service_name)
+            queryset = queryset.filter(technical_service_name__icontains=service_name)
 
-        # Build list of relationships
-        relationships = []
-        relationship_id = 0
+        # Get total count and apply database-level pagination
+        total_count = queryset.count()
+        queryset = queryset.order_by('id', 'technical_service_id')[offset:offset + limit]
 
-        for service in queryset:
-            vms = service.vms.all()
-
-            # Apply VM filters
-            if vm_id:
-                vms = vms.filter(id=vm_id)
-            if vm_name:
-                vms = vms.filter(name__icontains=vm_name)
-
-            for vm in vms:
-                relationship_id += 1
-                relationships.append({
-                    'id': relationship_id,
-                    'technical_service_id': service.id,
-                    'technical_service_name': service.name,
-                    'technical_service_type': service.service_type,
-                    'virtual_machine_id': vm.id,
-                    'virtual_machine_name': vm.name,
-                    'virtual_machine_cluster': vm.cluster.name if vm.cluster else None,
-                })
-
-        # Apply pagination
-        total_count = len(relationships)
-        relationships = relationships[offset:offset + limit]
-
-        # Serialize
-        serializer = TechnicalServiceVMRelationshipSerializer(relationships, many=True)
+        # Build results directly from annotated queryset
+        results = [
+            {
+                'id': idx + offset + 1,
+                'technical_service_id': obj.technical_service_id,
+                'technical_service_name': obj.technical_service_name,
+                'technical_service_type': obj.technical_service_type,
+                'virtual_machine_id': obj.id,
+                'virtual_machine_name': obj.name,
+                'virtual_machine_cluster': obj.cluster.name if obj.cluster else None,
+            }
+            for idx, obj in enumerate(queryset)
+        ]
 
         return Response({
             'count': total_count,
             'limit': limit,
             'offset': offset,
-            'results': serializer.data
+            'results': results
         })
