@@ -1547,11 +1547,13 @@ class AlertIngestionViewSet(ViewSet):
                 dimensions.get('service_name', ''))
 
 
-class DeviceBusinessApplicationRelationshipViewSet(ViewSet):
+class DeviceBusinessApplicationRelationshipViewSet(ModelViewSet):
     """
     API endpoint for listing device to business application relationships as unique objects.
     Provides a flat view of the ManyToMany relationship between devices and business applications.
     """
+    queryset = BusinessApplication.objects.all()
+    serializer_class = DeviceBusinessApplicationRelationshipSerializer
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
@@ -1616,11 +1618,13 @@ class DeviceBusinessApplicationRelationshipViewSet(ViewSet):
         })
 
 
-class VirtualMachineBusinessApplicationRelationshipViewSet(ViewSet):
+class VirtualMachineBusinessApplicationRelationshipViewSet(ModelViewSet):
     """
     API endpoint for listing virtual machine to business application relationships as unique objects.
     Provides a flat view of the ManyToMany relationship between VMs and business applications.
     """
+    queryset = BusinessApplication.objects.all()
+    serializer_class = VirtualMachineBusinessApplicationRelationshipSerializer
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
@@ -1685,11 +1689,13 @@ class VirtualMachineBusinessApplicationRelationshipViewSet(ViewSet):
         })
 
 
-class TechnicalServiceDeviceRelationshipViewSet(ViewSet):
+class TechnicalServiceDeviceRelationshipViewSet(ModelViewSet):
     """
     API endpoint for listing technical service to device relationships as unique objects.
     Provides a flat view of the ManyToMany relationship between technical services and devices.
     """
+    queryset = TechnicalService.objects.all()
+    serializer_class = TechnicalServiceDeviceRelationshipSerializer
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
@@ -1754,11 +1760,13 @@ class TechnicalServiceDeviceRelationshipViewSet(ViewSet):
         })
 
 
-class TechnicalServiceVMRelationshipViewSet(ViewSet):
+class TechnicalServiceVMRelationshipViewSet(ModelViewSet):
     """
     API endpoint for listing technical service to virtual machine relationships as unique objects.
     Provides a flat view of the ManyToMany relationship between technical services and VMs.
     """
+    queryset = TechnicalService.objects.all()
+    serializer_class = TechnicalServiceVMRelationshipSerializer
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
