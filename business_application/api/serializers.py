@@ -1120,3 +1120,16 @@ class TechnicalServiceVMRelationshipSerializer(serializers.Serializer):
     virtual_machine_id = serializers.IntegerField()
     virtual_machine_name = serializers.CharField()
     virtual_machine_cluster = serializers.CharField(allow_null=True)
+
+
+class ServiceDependencyRelationshipSerializer(serializers.Serializer):
+    """Serializer for service dependency relationships (optimized flat format)."""
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField()
+    dependency_type = serializers.CharField()
+    upstream_service_id = serializers.IntegerField()
+    upstream_service_name = serializers.CharField()
+    upstream_service_type = serializers.CharField()
+    downstream_service_id = serializers.IntegerField()
+    downstream_service_name = serializers.CharField()
+    downstream_service_type = serializers.CharField()

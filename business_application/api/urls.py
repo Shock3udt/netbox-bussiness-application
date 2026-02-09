@@ -10,7 +10,8 @@ from business_application.api.views import (
     DeviceBusinessApplicationRelationshipViewSet,
     VirtualMachineBusinessApplicationRelationshipViewSet,
     TechnicalServiceDeviceRelationshipViewSet,
-    TechnicalServiceVMRelationshipViewSet
+    TechnicalServiceVMRelationshipViewSet,
+    ServiceDependencyRelationshipViewSet
 )
 from business_application.api.incident_automation_views import IncidentAutomationViewSet
 
@@ -75,5 +76,11 @@ urlpatterns = router.urls + [
         'technical-service-vm-relationships/',
         TechnicalServiceVMRelationshipViewSet.as_view({'get': 'list'}),
         name='technical-service-vm-relationships-list'
+    ),
+    # Service dependency relationships (optimized)
+    path(
+        'service-dependency-relationships/',
+        ServiceDependencyRelationshipViewSet.as_view({'get': 'list'}),
+        name='service-dependency-relationships-list'
     ),
 ]

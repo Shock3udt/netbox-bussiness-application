@@ -34,7 +34,8 @@ from business_application.api.serializers import (
     DeviceBusinessApplicationRelationshipSerializer,
     VirtualMachineBusinessApplicationRelationshipSerializer,
     TechnicalServiceDeviceRelationshipSerializer,
-    TechnicalServiceVMRelationshipSerializer
+    TechnicalServiceVMRelationshipSerializer,
+    ServiceDependencyRelationshipSerializer
 )
 from dcim.models import Device
 from virtualization.models import Cluster, VirtualMachine
@@ -73,7 +74,7 @@ class TechnicalServiceViewSet(ModelViewSet):
     """
     queryset = TechnicalService.objects.prefetch_related(
         'business_apps', 'vms', 'devices', 'clusters'
-    ).select_related('pagerduty_template').all()
+    ).select_related('pagerduty_service_definition', 'pagerduty_router_rule').all()
     serializer_class = TechnicalServiceSerializer
     permission_classes = [IsAuthenticated]
 
@@ -1817,6 +1818,75 @@ class TechnicalServiceVMRelationshipViewSet(ModelViewSet):
                 'virtual_machine_cluster': obj.cluster.name if obj.cluster else None,
             }
             for idx, obj in enumerate(queryset)
+        ]
+
+        return Response({
+            'count': total_count,
+            'limit': limit,
+            'offset': offset,
+            'results': results
+        })
+
+
+class ServiceDependencyRelationshipViewSet(ModelViewSet):
+    """
+    API endpoint for listing service dependency relationships as unique objects.
+    Provides an optimized flat view of service dependencies with database-level pagination.
+    """
+    queryset = ServiceDependency.objects.all()
+    serializer_class = ServiceDependencyRelationshipSerializer
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """
+        List all service dependency relationships.
+        Supports filtering by upstream_service_id, upstream_service_name,
+        downstream_service_id, downstream_service_name, dependency_type.
+        """
+        # Get filter parameters
+        upstream_service_id = request.query_params.get('upstream_service_id')
+        upstream_service_name = request.query_params.get('upstream_service_name')
+        downstream_service_id = request.query_params.get('downstream_service_id')
+        downstream_service_name = request.query_params.get('downstream_service_name')
+        dependency_type = request.query_params.get('dependency_type')
+        limit = int(request.query_params.get('limit', 100))
+        offset = int(request.query_params.get('offset', 0))
+
+        # Query with select_related for efficient joins
+        queryset = ServiceDependency.objects.select_related(
+            'upstream_service', 'downstream_service'
+        )
+
+        # Apply filters at database level
+        if upstream_service_id:
+            queryset = queryset.filter(upstream_service_id=upstream_service_id)
+        if upstream_service_name:
+            queryset = queryset.filter(upstream_service__name__icontains=upstream_service_name)
+        if downstream_service_id:
+            queryset = queryset.filter(downstream_service_id=downstream_service_id)
+        if downstream_service_name:
+            queryset = queryset.filter(downstream_service__name__icontains=downstream_service_name)
+        if dependency_type:
+            queryset = queryset.filter(dependency_type=dependency_type)
+
+        # Get total count and apply database-level pagination
+        total_count = queryset.count()
+        queryset = queryset.order_by('id')[offset:offset + limit]
+
+        # Build results directly from queryset
+        results = [
+            {
+                'id': obj.id,
+                'name': obj.name,
+                'dependency_type': obj.dependency_type,
+                'upstream_service_id': obj.upstream_service_id,
+                'upstream_service_name': obj.upstream_service.name,
+                'upstream_service_type': obj.upstream_service.service_type,
+                'downstream_service_id': obj.downstream_service_id,
+                'downstream_service_name': obj.downstream_service.name,
+                'downstream_service_type': obj.downstream_service.service_type,
+            }
+            for obj in queryset
         ]
 
         return Response({
